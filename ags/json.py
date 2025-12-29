@@ -10,17 +10,17 @@ _settings = dict(
 
 
 def dump(f, obj, T):
-    json.dump(_map(T).lower(obj, ""), f, **_settings)
+    json.dump(_map(T).lower(obj), f, **_settings)
     f.write("\n")
 
 
 def dumps(obj, T):
-    return json.dumps(_map(T).lower(obj, ""), **_settings) + "\n"
+    return json.dumps(_map(T).lower(obj), **_settings) + "\n"
 
 
 def load(f, T):
-    return _map(T).unlower(json.load(f), "")
+    return _map(T).unlower(json.load(f))
 
 
 def loads(s, T):
-    return _map(T).unlower(json.loads(s), "")
+    return _map(T).unlower(json.loads(s))

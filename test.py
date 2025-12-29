@@ -5,7 +5,7 @@ from typing import Union, Literal, Tuple, List, Dict, Optional, Self, Type
 from unittest import TestCase
 from io import StringIO
 from datetime import datetime
-from doctest import DocTestSuite, DocFileSuite
+from doctest import DocFileSuite
 
 from ags._mapping import mapping_for
 
@@ -17,9 +17,9 @@ def load_tests(loader, tests, ignore):
 
 class Mapping(TestCase):
     def check(self, obj, T):
-        m = mapping_for(T, "", with_date=False)
-        low = m.lower(obj, "")
-        high = m.unlower(low, "")
+        m = mapping_for(T, with_date=False)
+        low = m.lower(obj)
+        high = m.unlower(low)
         self.assertEqual(high, obj)
         return low
 
@@ -110,6 +110,12 @@ class Mapping(TestCase):
 
         a = A([2, 3, 4])
         self.assertEqual(self.check(a, A), [2, 3, 4])
+
+    def test_exception(self):
+        T = dict[str, list[int]]
+        m = mapping_for(T, with_date=False)
+        with self.assertRaisesRegex(ValueError, "in \[b\]\[1\]: expects int, got str"):
+            m.unlower({"a": [10, 20], "b": [30, "40", 50]})
 
 
 class Test(TestCase):

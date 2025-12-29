@@ -10,16 +10,16 @@ _settings = dict(
 
 
 def dump(f, obj, T):
-    yaml.safe_dump(_map(T).lower(obj, ""), f, **_settings)
+    yaml.safe_dump(_map(T).lower(obj), f, **_settings)
 
 
 def dumps(obj, T):
-    return yaml.safe_dump(_map(T).lower(obj, ""), **_settings)
+    return yaml.safe_dump(_map(T).lower(obj), **_settings)
 
 
 def load(f, T):
-    return _map(T).unlower(yaml.safe_load(f), "")
+    return _map(T).unlower(yaml.safe_load(f))
 
 
 def loads(s, T):
-    return _map(T).unlower(yaml.safe_load(s), "")
+    return _map(T).unlower(yaml.safe_load(s))
