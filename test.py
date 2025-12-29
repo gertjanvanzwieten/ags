@@ -4,10 +4,10 @@ from inspect import signature
 from typing import Union, Literal, Tuple, List, Dict, Optional, Self, Type
 from unittest import TestCase
 from io import StringIO
-from datetime import datetime
+from datetime import date, time, datetime
 from doctest import DocFileSuite
 
-from ags._mapping import mapping_for
+from ags import _mapping
 
 
 def load_tests(loader, tests, ignore):
@@ -16,15 +16,24 @@ def load_tests(loader, tests, ignore):
 
 
 class Mapping(TestCase):
+    class IdentityBackend:
+        def lower(obj):
+            return obj
+
+        def unlower(obj, T):
+            if type(obj) is not T:
+                raise ValueError(f"expects {T.__name__}, got {type(obj).__name__}")
+            return obj
+
     def check(self, obj, T):
-        m = mapping_for(T, with_date=False)
-        low = m.lower(obj)
-        high = m.unlower(low)
+        m = _mapping.mapping_for(T)
+        low = m.lower(obj, self.IdentityBackend)
+        high = m.unlower(low, self.IdentityBackend)
         self.assertEqual(high, obj)
         return low
 
     def test_primitive(self):
-        for obj in "abc", 123, 1.5, True, False, None:
+        for obj in "abc", 123, 1.5, True, False:
             T = type(obj)
             with self.subTest(T.__name__):
                 self.assertEqual(self.check(obj, T), obj)
@@ -35,8 +44,8 @@ class Mapping(TestCase):
             self.assertEqual(self.check(obj, T), obj)
 
     def test_complex(self):
-        self.assertEqual(self.check(1 + 2j, complex), "1+2j")
-        self.assertEqual(self.check(3 + 0j, complex), 3.0)
+        self.assertEqual(self.check(1 + 2j, complex), 1 + 2j)
+        self.assertEqual(self.check(3 + 0j, complex), 3 + 0j)
 
     def test_bytes(self):
         self.check(b"abc", bytes)
@@ -75,17 +84,25 @@ class Mapping(TestCase):
         for modern in False, True:
             with self.subTest("optional", modern=modern):
                 T = int | None if modern else Optional[int]
-                self.assertEqual(self.check(123, T), 123)
-                self.assertEqual(self.check(None, T), None)
+                self.assertEqual(self.check(123, T), _mapping.OptionalValue(123))
+                self.assertEqual(self.check(None, T), _mapping.OptionalValue(None))
             with self.subTest("union", modern=modern):
                 T = int | str if modern else Union[int, str]
-                self.assertEqual(self.check(123, T), {"int": 123})
-                self.assertEqual(self.check("abc", T), {"str": "abc"})
+                self.assertEqual(self.check(123, T), _mapping.UnionValue("int", 123))
+                self.assertEqual(
+                    self.check("abc", T), _mapping.UnionValue("str", "abc")
+                )
             with self.subTest("optional-union", modern=modern):
                 T = int | str | None if modern else Optional[Union[int, str]]
-                self.assertEqual(self.check(123, T), {"int": 123})
-                self.assertEqual(self.check("abc", T), {"str": "abc"})
-                self.assertEqual(self.check(None, T), None)
+                self.assertEqual(
+                    self.check(123, T),
+                    _mapping.OptionalValue(_mapping.UnionValue("int", 123)),
+                )
+                self.assertEqual(
+                    self.check("abc", T),
+                    _mapping.OptionalValue(_mapping.UnionValue("str", "abc")),
+                )
+                self.assertEqual(self.check(None, T), _mapping.OptionalValue(None))
 
     def test_enum(self):
         class E(Enum):
@@ -111,12 +128,12 @@ class Mapping(TestCase):
 
     def test_exception(self):
         T = dict[str, list[int]]
-        m = mapping_for(T, with_date=False)
+        m = _mapping.mapping_for(T)
         with self.assertRaisesRegex(ValueError, "in \[b\]\[1\]: expects int, got str"):
-            m.unlower({"a": [10, 20], "b": [30, "40", 50]})
+            m.unlower({"a": [10, 20], "b": [30, "40", 50]}, self.IdentityBackend)
 
 
-class Test(TestCase):
+class Demo:
     @dataclass
     class A:
         x: int
@@ -143,36 +160,108 @@ class Test(TestCase):
     def func(a: A, b: List[B], direction: Union[Left, Right]):
         pass
 
-    def setUp(self):
-        cls = type(self)
-        a = cls.A(1, 2.5)
-        b = [cls.B("a", cls.B.Sub(b"foo", "αβγ")), cls.B("b", cls.B.Sub(b"bar", None))]
-        direction = cls.Right(datetime.fromtimestamp(1753600000))
-        self.sig = signature(cls.func)
-        self.bound = self.sig.bind(a, b, direction)
 
-    def test_load(self):
-        obj = self.mod.load(StringIO(self.expect), self.sig)
-        self.assertEqual(obj, self.bound)
+class Backend:
+    def check_lower(self, obj, expect):
+        low = self.mod._Backend.lower(obj)
+        self.assertEqual(low, expect)
+        high = self.mod._Backend.unlower(low, type(obj))
+        self.assertEqual(high, obj)
+        return low
 
-    def test_loads(self):
-        obj = self.mod.loads(self.expect, self.sig)
-        self.assertEqual(obj, self.bound)
+    def check_load_dump(self, expect):
+        sig = signature(Demo.func)
+        bound = sig.bind(
+            a=Demo.A(1, 2.5),
+            b=[
+                Demo.B("a", Demo.B.Sub(b"foo", "αβγ")),
+                Demo.B("b", Demo.B.Sub(b"bar", None)),
+            ],
+            direction=Demo.Right(datetime.fromtimestamp(1753600000)),
+        )
+        with self.subTest("load"):
+            obj = self.mod.load(StringIO(expect), sig)
+            self.assertEqual(obj, bound)
+        with self.subTest("loads"):
+            obj = self.mod.loads(expect, sig)
+            self.assertEqual(obj, bound)
+        with self.subTest("dump"):
+            f = StringIO()
+            self.mod.dump(f, bound, sig)
+            self.assertEqual(f.getvalue(), expect)
+        with self.subTest("dumps"):
+            s = self.mod.dumps(bound, sig)
+            self.assertEqual(s, expect)
 
-    def test_dump(self):
-        f = StringIO()
-        self.mod.dump(f, self.bound, self.sig)
-        self.assertEqual(f.getvalue(), self.expect)
 
-    def test_dumps(self):
-        s = self.mod.dumps(self.bound, self.sig)
-        self.assertEqual(s, self.expect)
-
-
-class Json(Test):
+class JSON(Backend, TestCase):
     from ags import json as mod
 
-    expect = """\
+    def test_bool(self):
+        for obj in True, False:
+            self.check_lower(obj, expect=obj)
+
+    def test_int(self):
+        for obj in 0, 1, 2, 10, -5:
+            self.check_lower(obj, expect=obj)
+
+    def test_float(self):
+        for obj in 0.0, 1.0, 2.0, -2.5:
+            self.check_lower(obj, expect=obj)
+
+    def test_complex(self):
+        for obj in 0 + 0j, 1 + 0j:
+            self.check_lower(obj, expect=obj.real)
+        self.check_lower(1j, expect="1j")
+        self.check_lower(-2.5 + 3.5j, "-2.5+3.5j")
+
+    def test_str(self):
+        for obj in "foo", "bar":
+            self.check_lower(obj, expect=obj)
+
+    def test_bytes(self):
+        for obj in b"foo", b"bar", "αβγ".encode():
+            self.check_lower(obj, expect="utf8:" + obj.decode("utf8"))
+        self.check_lower(bytes([0xC0, 0xC1, 0xF5]), expect="z`^w")
+
+    def test_date(self):
+        for obj in (
+            date.fromisoformat("2000-10-15"),
+            date.fromisoformat("2025-12-31"),
+        ):
+            self.check_lower(obj, expect=obj.isoformat())
+
+    def test_time(self):
+        for obj in (
+            time.fromisoformat("10:32"),
+            time.fromisoformat("22:33"),
+        ):
+            self.check_lower(obj, expect=obj.isoformat())
+
+    def test_datetime(self):
+        for obj in (
+            datetime.fromisoformat("2000-10-15 10:32"),
+            datetime.fromisoformat("2025-12-31 22:33"),
+        ):
+            self.check_lower(obj, expect=obj.isoformat())
+
+    def test_list(self):
+        obj = [123, "abc", ["x", "y", "z"]]
+        self.check_lower(obj, expect=obj)
+
+    def test_dict(self):
+        obj = {"a": 123, 10: "abc", True: ["x", "y", "z"]}
+        self.check_lower(obj, expect=obj)
+
+    def test_union(self):
+        self.check_lower(_mapping.UnionValue("abc", 123), expect={"abc": 123})
+
+    def test_optional(self):
+        self.check_lower(_mapping.OptionalValue("abc"), expect="abc")
+        self.check_lower(_mapping.OptionalValue(None), expect=None)
+
+    def test_load_dump(self):
+        self.check_load_dump("""\
 {
   "a": {
     "x": 1,
@@ -200,13 +289,77 @@ class Json(Test):
     }
   }
 }
-"""
+""")
 
 
-class Yaml(Test):
+class YAML(Backend, TestCase):
     from ags import yaml as mod
 
-    expect = """\
+    def test_bool(self):
+        for obj in True, False:
+            self.check_lower(obj, expect=obj)
+
+    def test_int(self):
+        for obj in 0, 1, 2, 10, -5:
+            self.check_lower(obj, expect=obj)
+
+    def test_float(self):
+        for obj in 0.0, 1.0, 2.0, -2.5:
+            self.check_lower(obj, expect=obj)
+
+    def test_complex(self):
+        for obj in 0 + 0j, 1 + 0j:
+            self.check_lower(obj, expect=obj.real)
+        self.check_lower(1j, expect="1j")
+        self.check_lower(-2.5 + 3.5j, "-2.5+3.5j")
+
+    def test_str(self):
+        for obj in "foo", "bar":
+            self.check_lower(obj, expect=obj)
+
+    def test_bytes(self):
+        for obj in b"foo", b"bar", "αβγ".encode():
+            self.check_lower(obj, expect="utf8:" + obj.decode("utf8"))
+        self.check_lower(bytes([0xC0, 0xC1, 0xF5]), expect="z`^w")
+
+    def test_date(self):
+        for obj in (
+            date.fromisoformat("2000-10-15"),
+            date.fromisoformat("2025-12-31"),
+        ):
+            self.check_lower(obj, expect=obj)
+
+    def test_time(self):
+        for obj in (
+            time.fromisoformat("10:32"),
+            time.fromisoformat("22:33"),
+        ):
+            self.check_lower(obj, expect=obj)
+
+    def test_datetime(self):
+        for obj in (
+            datetime.fromisoformat("2000-10-15 10:32"),
+            datetime.fromisoformat("2025-12-31 22:33"),
+        ):
+            self.check_lower(obj, expect=obj)
+
+    def test_list(self):
+        obj = [123, "abc", ["x", "y", "z"]]
+        self.check_lower(obj, expect=obj)
+
+    def test_dict(self):
+        obj = {"a": 123, 10: "abc", True: ["x", "y", "z"]}
+        self.check_lower(obj, expect=obj)
+
+    def test_union(self):
+        self.check_lower(_mapping.UnionValue("abc", 123), expect={"abc": 123})
+
+    def test_optional(self):
+        self.check_lower(_mapping.OptionalValue("abc"), expect="abc")
+        self.check_lower(_mapping.OptionalValue(None), expect=None)
+
+    def test_load_dump(self):
+        self.check_load_dump("""\
 a:
   x: 1
   y: 2.5
@@ -222,7 +375,4 @@ b:
 direction:
   Right:
     when: 2025-07-27 09:06:40
-"""
-
-
-del Test
+""")
