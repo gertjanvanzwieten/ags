@@ -1,11 +1,22 @@
-import base64
 import dataclasses
 import datetime
 import enum
-import functools
 import inspect
 import typing
 import types
+
+
+PRIMITIVES = (
+    bool,
+    int,
+    float,
+    complex,
+    str,
+    bytes,
+    datetime.date,
+    datetime.time,
+    datetime.datetime,
+)
 
 
 class context:
@@ -63,18 +74,18 @@ class Mapping(typing.Protocol):
     def unlower(self, obj: typing.Any) -> typing.Any: ...
 
 
-def mapping_for(T, with_date) -> Mapping:
-    if T in (int, float, bool, str, type(None)):
+def inject_none(obj):
+    pass
+
+
+def mapping_for(T) -> Mapping:
+    if T in PRIMITIVES:
         return Primitive(T)
 
     if typing.get_origin(T) == typing.Literal:
-        return Literal(typing.get_args(T))
-
-    if T is complex:
-        return Complex()
-
-    if T is bytes:
-        return Bytes()
+        options = typing.get_args(T)
+        if all(type(option) in PRIMITIVES for option in options):
+            return Literal(options)
 
     if typing.get_origin(T) in (typing.Union, types.UnionType):
         options = list(typing.get_args(T))
@@ -90,45 +101,44 @@ def mapping_for(T, with_date) -> Mapping:
                 else:
                     name = option.__name__
                 with context(f"({option})"):
-                    d[name] = option, mapping_for(option, with_date)
+                    d[name] = option, mapping_for(option)
             return Union(d)
         else:
             T = options[0]
             for T2 in options[1:]:
                 T = typing.Union[T, T2]
-            return Optional(mapping_for(T, with_date))
+            return Optional(mapping_for(T))
 
     if typing.get_origin(T) is list:
         (item_type,) = typing.get_args(T)
-        return List(mapping_for(item_type, with_date))
+        return List(mapping_for(item_type))
 
     if typing.get_origin(T) is tuple:
         item_types = typing.get_args(T)
         if len(item_types) == 2 and item_types[1] == ...:
-            return UniformTuple(mapping_for(item_types[0], with_date))
+            return UniformTuple(mapping_for(item_types[0]))
         else:
             items = []
             for i, item_type in enumerate(item_types):
                 with context(f"[{i}]"):
-                    items.append(mapping_for(item_type, with_date))
+                    items.append(mapping_for(item_type))
             return Tuple(tuple(items))
 
     if typing.get_origin(T) is dict:
         key_type, value_type = typing.get_args(T)
         if key_type is str:
-            return Dict(mapping_for(value_type, with_date))
+            return Dict(mapping_for(key_type), mapping_for(value_type))
 
     if dataclasses.is_dataclass(T):
         fields = {}
         for field in dataclasses.fields(T):
             with context(f".{field.name}"):
-                fields[field.name] = mapping_for(field.type, with_date)
+                mapping = mapping_for(field.type)
+                fields[field.name] = mapping
+                if field.default is not dataclasses.MISSING:
+                    with context("(default)"):
+                        mapping.lower(field.default, inject_none)
         return DataClass(T, fields)
-
-    if T in (datetime.date, datetime.time, datetime.datetime):
-        if with_date:
-            return Primitive(T)
-        return DateTime(T)
 
     if type(T) is type(enum.Enum):
         return Enum(T)
@@ -137,13 +147,18 @@ def mapping_for(T, with_date) -> Mapping:
         mappings = {}
         for param in T.parameters.values():
             with context(f".{param.name}"):
+                if param.kind not in (param.POSITIONAL_OR_KEYWORD, param.KEYWORD_ONLY):
+                    raise TypeError("positional-only arguments are not supported")
                 if param.annotation != param.empty:
-                    param_type = param.annotation
+                    mapping = mapping_for(param.annotation)
+                    if param.default != param.empty:
+                        with context("(default)"):
+                            mapping.lower(param.default, inject_none)
                 elif param.default != param.empty:
-                    param_type = type(param.default)
+                    mapping = mapping_for(type(param.default))
                 else:
                     raise TypeError(f"cannot establish type for parameter {param.name}")
-                mappings[param.name] = mapping_for(param_type, with_date)
+                mappings[param.name] = mapping
         return Signature(T, mappings)
 
     if hasattr(T, "__reduce__"):
@@ -157,7 +172,7 @@ def mapping_for(T, with_date) -> Mapping:
                 and len(typing.get_args(args)) == 1
             ):
                 (annotation,) = typing.get_args(args)
-                return Reduce(T, mapping_for(annotation, with_date))
+                return Reduce(T, mapping_for(annotation))
 
     raise ValueError(f"cannot find a mapping for type {T!r}")
 
@@ -166,113 +181,101 @@ def mapping_for(T, with_date) -> Mapping:
 class Primitive:
     T: typing.Any
 
-    def lower(self, obj):
+    def lower(self, obj, inject):
         assert_isinstance(obj, self.T)
-        return obj
+        return inject(obj)
 
-    def unlower(self, obj):
-        assert_isinstance(obj, self.T)
-        return obj
+    def unlower(self, obj, surject):
+        return surject(obj, self.T)
 
 
 @dataclasses.dataclass
 class Literal:
     options: tuple[typing.Any, ...]
 
-    def lower(self, obj):
+    def lower(self, obj, inject):
         assert_in(obj, self.options)
-        return obj
+        return inject(obj)
 
-    def unlower(self, obj):
-        assert_in(obj, self.options)
-        return obj
+    def unlower(self, obj, surject):
+        for option in self.options:
+            try:
+                value = surject(obj, type(option))
+            except Exception:
+                pass
+            else:
+                if value == option:
+                    return option
+        raise mismatch(
+            expect="one of " + ", ".join(str(option) for option in self.options),
+            got=obj,
+        )
 
 
-class Complex:
-    def lower(self, obj):
-        assert_isinstance(obj, complex)
-        return obj.real if not obj.imag else str(obj).strip("()")
-
-    def unlower(self, obj):
-        assert_isinstance(obj, (float, str))
-        return complex(obj)
-
-
-class Bytes:
-    def lower(self, obj):
-        assert_isinstance(obj, bytes)
-        try:
-            s = obj.decode("utf8")
-        except UnicodeDecodeError:
-            return base64.b85encode(obj).decode()
-        else:
-            return "utf8:" + s
-
-    def unlower(self, obj):
-        assert_isinstance(obj, str)
-        if ":" in obj:
-            enc, s = obj.split(":")
-            return s.encode(enc)
-        return base64.b85decode(obj)
+class OptionalValue(typing.NamedTuple):
+    value: typing.Any
 
 
 @dataclasses.dataclass
 class Optional:
     mapping: Mapping
 
-    def lower(self, obj):
-        if obj is None:
-            return None
-        return self.mapping.lower(obj)
+    def lower(self, obj, inject):
+        return inject(
+            OptionalValue(None if obj is None else self.mapping.lower(obj, inject))
+        )
 
-    def unlower(self, obj):
-        if obj is None:
+    def unlower(self, obj, surject):
+        (value,) = surject(obj, OptionalValue)
+        if value is None:
             return None
-        return self.mapping.unlower(obj)
+        return self.mapping.unlower(value, surject)
+
+
+class UnionValue(typing.NamedTuple):
+    name: str
+    value: typing.Any
 
 
 @dataclasses.dataclass
 class Union:
     options: dict[str, tuple[typing.Any, Mapping]]
 
-    def lower(self, obj):
+    def lower(self, obj, inject):
         for name, (T, mapping) in self.options.items():
             if type(obj) is T:
                 with context(f"({name})"):
-                    return {name: mapping.lower(obj)}
+                    return inject(UnionValue(name, mapping.lower(obj, inject)))
         raise mismatch(
             expect="one of " + ", ".join(self.options), got=type(obj).__name__
         )
 
-    def unlower(self, obj):
-        assert_isinstance(obj, dict)
-        if len(obj) != 1:
-            raise mismatch(expect="a single dictionary item", got=len(obj))
-        ((k, v),) = obj.items()
-        assert_in(k, self.options)
-        T, mapping = self.options[k]
-        with context(f"({k})"):
-            return mapping.unlower(v)
+    def unlower(self, obj, surject):
+        name, value = surject(obj, UnionValue)
+        assert_in(name, self.options)
+        T, mapping = self.options[name]
+        with context(f"({name})"):
+            return mapping.unlower(value, surject)
 
 
 @dataclasses.dataclass
 class List:
     mapping: Mapping
 
-    def lower(self, obj):
+    def lower(self, obj, inject):
         assert_isinstance(obj, list)
         items = []
         for i, item in enumerate(obj):
             with context(f"[{i}]"):
-                items.append(self.mapping.lower(item))
-        return items
+                items.append(self.mapping.lower(item, inject))
+        return inject(items)
 
-    def unlower(self, obj):
-        assert_isinstance(obj, list)
+    def unlower(self, obj, surject):
+        lobj = surject(obj, list)
         items = []
-        for i, item in enumerate(obj):
+        for i, item in enumerate(lobj):
             with context(f"[{i}]"):
-                items.append(self.mapping.unlower(item))
+                items.append(self.mapping.unlower(item, surject))
         return items
 
 
@@ -280,24 +283,24 @@ class List:
 class Tuple:
     mappings: tuple[Mapping, ...]
 
-    def lower(self, obj):
+    def lower(self, obj, inject):
         assert_isinstance(obj, tuple)
         if len(obj) != len(self.mappings):
             mismatch(expect=f"{len(self.mappings)} items", got=len(obj))
         items = []
         for i, (item, mapping) in enumerate(zip(obj, self.mappings)):
             with context(f"[{i}]"):
-                items.append(mapping.lower(item))
-        return items
+                items.append(mapping.lower(item, inject))
+        return inject(items)
 
-    def unlower(self, obj):
-        assert_isinstance(obj, list)
-        if len(obj) != len(self.mappings):
-            mismatch(expect=f"{len(self.mappings)} items", got=len(obj))
+    def unlower(self, obj, surject):
+        lobj = surject(obj, list)
+        if len(lobj) != len(self.mappings):
+            mismatch(expect=f"{len(self.mappings)} items", got=len(lobj))
         items = []
-        for i, (item, mapping) in enumerate(zip(obj, self.mappings)):
+        for i, (item, mapping) in enumerate(zip(lobj, self.mappings)):
             with context(f"[{i}]"):
-                items.append(mapping.unlower(item))
+                items.append(mapping.unlower(item, surject))
         return tuple(items)
 
 
@@ -305,41 +308,44 @@ class Tuple:
 class UniformTuple:
     mapping: Mapping
 
-    def lower(self, obj):
+    def lower(self, obj, inject):
         assert_isinstance(obj, tuple)
         items = []
         for i, item in enumerate(obj):
             with context(f"[{i}]"):
-                items.append(self.mapping.lower(item))
-        return items
+                items.append(self.mapping.lower(item, inject))
+        return inject(items)
 
-    def unlower(self, obj):
-        assert_isinstance(obj, list)
+    def unlower(self, obj, surject):
+        lobj = surject(obj, list)
         items = []
-        for i, item in enumerate(obj):
+        for i, item in enumerate(lobj):
             with context(f"[{i}]"):
-                items.append(self.mapping.unlower(item))
+                items.append(self.mapping.unlower(item, surject))
         return tuple(items)
 
 
 @dataclasses.dataclass
 class Dict:
-    mapping: Mapping
+    key_mapping: Mapping
+    val_mapping: Mapping
 
-    def lower(self, obj):
+    def lower(self, obj, inject):
         assert_isinstance(obj, dict)
         d = {}
         for k, v in obj.items():
             with context(f"[{k}]"):
-                d[k] = self.mapping.lower(v)
-        return d
+                d[self.key_mapping.lower(k, inject)] = self.val_mapping.lower(v, inject)
+        return inject(d)
 
-    def unlower(self, obj):
-        assert_isinstance(obj, dict)
+    def unlower(self, obj, surject):
+        dobj = surject(obj, dict)
         d = {}
-        for k, v in obj.items():
+        for k, v in dobj.items():
             with context(f"[{k}]"):
-                d[k] = self.mapping.unlower(v)
+                d[self.key_mapping.unlower(k, surject)] = self.val_mapping.unlower(
+                    v, surject
+                )
         return d
 
 
@@ -348,49 +354,36 @@ class DataClass:
     cls: type
     fields: dict[str, typing.Any]
 
-    def lower(self, obj):
+    def lower(self, obj, inject):
         if not dataclasses.is_dataclass(obj) or isinstance(obj, type):
             mismatch(expect="a dataclass object", got=type(obj).__name__)
         d = {}
         for name, mapping in self.fields.items():
             with context(f".{name}"):
-                d[name] = mapping.lower(getattr(obj, name))
-        return d
+                d[name] = mapping.lower(getattr(obj, name), inject)
+        return inject(d)
 
-    def unlower(self, obj):
-        assert_isinstance(obj, dict)
+    def unlower(self, obj, surject):
+        dobj = surject(obj, dict)
         d = {}
         for name, mapping in self.fields.items():
             with context(f".{name}"):
-                d[name] = mapping.unlower(obj[name])
+                d[name] = mapping.unlower(dobj[name], surject)
         return self.cls(**d)
-
-
-@dataclasses.dataclass
-class DateTime:
-    datetype: type
-
-    def lower(self, obj):
-        assert_isinstance(obj, self.datetype)
-        return obj.isoformat()
-
-    def unlower(self, obj):
-        assert_isinstance(obj, str)
-        return self.datetype.fromisoformat(obj)
 
 
 @dataclasses.dataclass
 class Enum:
     E: enum.Enum
 
-    def lower(self, obj):
+    def lower(self, obj, inject):
         assert_isinstance(obj, self.E)
-        return obj.name
+        return inject(obj.name)
 
-    def unlower(self, obj):
-        assert_isinstance(obj, str)
-        assert_in(obj, self.E.__members__)
-        return getattr(self.E, obj)
+    def unlower(self, obj, surject):
+        name = surject(obj, str)
+        assert_in(name, self.E.__members__)
+        return getattr(self.E, name)
 
 
 @dataclasses.dataclass
@@ -398,20 +391,24 @@ class Signature:
     signature: typing.Any
     mappings: dict[str, Mapping]
 
-    def lower(self, obj):
+    def lower(self, obj, inject):
         assert_isinstance(obj, inspect.BoundArguments)
+        if obj.signature != self.signature:
+            raise ValueError("arguments are bound to the wrong signature")
+        obj = self.signature.bind(*obj.args, **obj.kwargs)  # copy obj
+        obj.apply_defaults()  # modify in place
         d = {}
         for name, v in obj.arguments.items():
             with context(f".{name}"):
-                d[name] = self.mappings[name].lower(v)
-        return d
+                d[name] = self.mappings[name].lower(v, inject)
+        return inject(d)
 
-    def unlower(self, obj):
-        assert_isinstance(obj, dict)
+    def unlower(self, obj, surject):
+        dobj = surject(obj, dict)
         d = {}
-        for name in obj:
+        for name in dobj:
             with context(f".{name}"):
-                d[name] = self.mappings[name].unlower(obj[name])
+                d[name] = self.mappings[name].unlower(dobj[name], surject)
         return self.signature.bind(**d)
 
 
@@ -420,7 +417,8 @@ class Reduce:
     T: type
     mapping: Mapping
 
-    def lower(self, obj):
+    def lower(self, obj, inject):
+        assert_isinstance(obj, self.T)
         f, args = obj.__reduce__()
         if f is not self.T:
             raise ValueError(f"reduction returned function {f}, expected {self.T}")
@@ -428,11 +426,7 @@ class Reduce:
             raise ValueError(
                 f"reduction returned a tuple of length {len(args)}, expected 1"
             )
-        return self.mapping.lower(args[0])
+        return self.mapping.lower(args[0], inject)
 
-    def unlower(self, obj):
-        return self.T(self.mapping.unlower(obj))
-
-
-mapping_with_date = functools.partial(mapping_for, with_date=True)
-mapping_without_date = functools.partial(mapping_for, with_date=False)
+    def unlower(self, obj, surject):
+        return self.T(self.mapping.unlower(obj, surject))
