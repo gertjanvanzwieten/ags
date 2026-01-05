@@ -394,3 +394,106 @@ direction:
   Right:
     when: 2025-07-27 09:06:40
 """)
+
+
+class UCSL(Backend, TestCase):
+    from ags import ucsl as mod
+
+    def test_bool(self):
+        self.check_lower(True, expect="true")
+        self.check_lower(False, expect="false")
+
+    def test_int(self):
+        for obj in 0, 1, 2, 10, -5:
+            self.check_lower(obj, expect=str(obj))
+
+    def test_float(self):
+        for obj in 0.0, 1.0, 2.0, -2.5:
+            self.check_lower(obj, expect=str(obj))
+
+    def test_complex(self):
+        for obj in 0 + 0j, 1 + 0j, 0 + 1j, -2.5 + 3.5j:
+            self.check_lower(obj, expect=str(obj).lstrip("(").rstrip(")"))
+
+    def test_str(self):
+        for obj in "foo", "bar":
+            self.check_lower(obj, expect=obj)
+
+    def test_bytes(self):
+        for obj in b"foo", b"bar", "αβγ".encode():
+            self.check_lower(obj, expect="utf8:" + obj.decode("utf8"))
+        self.check_lower(bytes([0xC0, 0xC1, 0xF5]), expect="z`^w")
+
+    def test_date(self):
+        for obj in (
+            date.fromisoformat("2000-10-15"),
+            date.fromisoformat("2025-12-31"),
+        ):
+            self.check_lower(obj, expect=obj.isoformat())
+
+    def test_time(self):
+        for obj in (
+            time.fromisoformat("10:32"),
+            time.fromisoformat("22:33"),
+        ):
+            self.check_lower(obj, expect=obj.isoformat())
+
+    def test_datetime(self):
+        for obj in (
+            datetime.fromisoformat("2000-10-15 10:32"),
+            datetime.fromisoformat("2025-12-31 22:33"),
+        ):
+            self.check_lower(obj, expect=obj.isoformat())
+
+    def test_list(self):
+        self.check_lower(["123", "abc", "xyz"], expect="123,abc,xyz")
+        self.check_lower([], expect="")
+        self.check_lower(["", ""], expect=",")
+        self.check_lower([""], expect="[]")
+
+    def test_dict(self):
+        obj = {"a": "123", "b": "abc", "c": "xyz"}
+        self.check_lower(obj, expect="a=123,b=abc,c=xyz")
+
+    def test_union(self):
+        self.check_lower(_mapping.UnionValue("abc", "123"), expect="abc[123]")
+        self.check_lower(_mapping.UnionValue("abc", ""), expect="abc")
+
+    def test_optional(self):
+        self.check_lower(_mapping.OptionalValue("abc"), expect="abc")
+        self.check_lower(_mapping.OptionalValue("-"), expect="[-]")
+        self.check_lower(_mapping.OptionalValue("a-z"), expect="a-z")
+        self.check_lower(_mapping.OptionalValue(None), expect="-")
+
+    def test_load_dump(self):
+        self.check_load_dump(
+            "a=[x=1,y=2.5],b=[[abc=a,sub=[b=utf8:foo,greek=αβγ]],[abc=b,sub=[b=utf8:bar,greek=-]]],direction=Right[when=2025-07-27T09:06:40]"
+        )
+
+    ## internals
+
+    def test_balance(self):
+        self.assertEqual(self.mod._balance("foo", "x"), (0, 0))
+        self.assertEqual(self.mod._balance("foo[bar", "o"), (1, 2))
+        self.assertEqual(self.mod._balance("foo[bar", "a"), (0, 1))
+        self.assertEqual(self.mod._balance("foo]bar", "x"), (1, 0))
+        self.assertEqual(self.mod._balance("[foobar]", "x"), (0, 0))
+        self.assertEqual(self.mod._balance("[foobar]", "a"), (0, 0))
+        self.assertEqual(self.mod._balance("[foo][bar]", "x"), (0, 0))
+        self.assertEqual(self.mod._balance("foo]bar]baz", "x"), (2, 0))
+        self.assertEqual(self.mod._balance("foo]bar]baz", "r"), (2, 0))
+        self.assertEqual(self.mod._balance("foo]bar]baz", "z"), (3, 1))
+        self.assertEqual(self.mod._balance("foo][bar", "x"), (1, 1))
+
+    def check_cover(self, s, chars):
+        hidden = self.mod._cover(s, chars)
+        self.assertEqual(self.mod._expose(hidden), s)
+        return hidden
+
+    def test_cover(self):
+        self.assertEqual(self.check_cover("foo", "o"), "[foo]")
+        self.assertEqual(self.check_cover("foo", "a"), "foo")
+        self.assertEqual(self.check_cover("[foo]", "o"), "~[foo]~")
+        self.assertEqual(self.check_cover("[foo", "o"), "~[foo~]")
+        self.assertEqual(self.check_cover("foo][bar", "o"), "[foo][bar]")
+        self.assertEqual(self.check_cover("foo]bar]baz", "o"), "[[~foo]bar]baz~")
