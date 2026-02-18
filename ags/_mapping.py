@@ -136,7 +136,13 @@ def mapping_for(T, with_date) -> Mapping:
         mappings = {}
         for param in T.parameters.values():
             with context(f".{param.name}"):
-                mappings[param.name] = mapping_for(param.annotation, with_date)
+                if param.annotation != param.empty:
+                    param_type = param.annotation
+                elif param.default != param.empty:
+                    param_type = type(param.default)
+                else:
+                    raise TypeError(f"cannot establish type for parameter {param.name}")
+                mappings[param.name] = mapping_for(param_type, with_date)
         return Signature(T, mappings)
 
     if hasattr(T, "__reduce__"):
