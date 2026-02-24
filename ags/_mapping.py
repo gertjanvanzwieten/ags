@@ -190,21 +190,11 @@ class Literal:
 class Complex:
     def lower(self, obj):
         assert_isinstance(obj, complex)
-        if not obj.imag:
-            return obj.real
-        return dict(real=obj.real, imag=obj.imag)
+        return obj.real if not obj.imag else str(obj).strip("()")
 
     def unlower(self, obj):
-        assert_isinstance(obj, (float, dict))
-        if isinstance(obj, float):
-            return complex(obj)
-        if len(obj) == 2 and all(
-            isinstance(obj.get(s), (int, float)) for s in ("real", "imag")
-        ):
-            return complex(obj["real"], obj["imag"])
-        raise mismatch(
-            expect="numerical dictionary values 'real' and 'imag'", got=repr(obj)
-        )
+        assert_isinstance(obj, (float, str))
+        return complex(obj)
 
 
 class Bytes:

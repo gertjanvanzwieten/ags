@@ -35,7 +35,7 @@ class Mapping(TestCase):
             self.assertEqual(self.check(obj, T), obj)
 
     def test_complex(self):
-        self.assertEqual(self.check(1 + 2j, complex), dict(real=1.0, imag=2.0))
+        self.assertEqual(self.check(1 + 2j, complex), "1+2j")
         self.assertEqual(self.check(3 + 0j, complex), 3.0)
 
     def test_bytes(self):
