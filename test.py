@@ -336,8 +336,7 @@ class YAML(Backend, TestCase):
 
     def test_bytes(self):
         for obj in b"foo", b"bar", "αβγ".encode():
-            self.check_lower(obj, expect="utf8:" + obj.decode("utf8"))
-        self.check_lower(bytes([0xC0, 0xC1, 0xF5]), expect="z`^w")
+            self.check_lower(obj, expect=obj)
 
     def test_date(self):
         for obj in (
@@ -383,11 +382,13 @@ a:
 b:
 - abc: a
   sub:
-    b: utf8:foo
+    b: !!binary |
+      Zm9v
     greek: αβγ
 - abc: b
   sub:
-    b: utf8:bar
+    b: !!binary |
+      YmFy
     greek: null
 direction:
   Right:
