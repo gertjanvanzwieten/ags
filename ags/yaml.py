@@ -1,8 +1,14 @@
 """YAML Ain’t Markup Language"""
 
+try:
+    import yaml
+except ImportError:
+    raise RuntimeError(
+        "The AGS YAML backend requires PyYAML to be installed. Try: pip install ags[yaml]."
+    )
+
 import base64
 import datetime
-import yaml
 
 from . import _mapping
 
