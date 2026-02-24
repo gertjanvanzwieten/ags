@@ -5,6 +5,7 @@ import enum
 import functools
 import inspect
 import typing
+import types
 
 
 class context:
@@ -75,7 +76,7 @@ def mapping_for(T, with_date) -> Mapping:
     if T is bytes:
         return Bytes()
 
-    if typing.get_origin(T) == typing.Union:
+    if typing.get_origin(T) in (typing.Union, types.UnionType):
         options = list(typing.get_args(T))
         try:
             options.remove(type(None))

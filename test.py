@@ -72,22 +72,20 @@ class Mapping(TestCase):
         self.assertEqual(self.check(bound, sig), {"i": 123, "s": "abc"})
 
     def test_union(self):
-        for name in "optional", "union", "optional-union":
-            is_union = name.endswith("union")
-            is_optional = name.startswith("optional")
-            with self.subTest(name):
-                T = int
-                if is_union:
-                    T = Union[T, str]
-                if is_optional:
-                    T = Optional[T]
-                    self.assertEqual(self.check(None, T), None)
-                v = self.check(123, T)
-                if is_union:
-                    self.assertEqual(v, {"int": 123})
-                    self.assertEqual(self.check("abc", T), {"str": "abc"})
-                else:
-                    self.assertEqual(v, 123)
+        for modern in False, True:
+            with self.subTest("optional", modern=modern):
+                T = int | None if modern else Optional[int]
+                self.assertEqual(self.check(123, T), 123)
+                self.assertEqual(self.check(None, T), None)
+            with self.subTest("union", modern=modern):
+                T = int | str if modern else Union[int, str]
+                self.assertEqual(self.check(123, T), {"int": 123})
+                self.assertEqual(self.check("abc", T), {"str": "abc"})
+            with self.subTest("optional-union", modern=modern):
+                T = int | str | None if modern else Optional[Union[int, str]]
+                self.assertEqual(self.check(123, T), {"int": 123})
+                self.assertEqual(self.check("abc", T), {"str": "abc"})
+                self.assertEqual(self.check(None, T), None)
 
     def test_enum(self):
         class E(Enum):
