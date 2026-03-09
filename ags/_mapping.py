@@ -175,6 +175,12 @@ def mapping_for(T) -> Mapping:
                 (annotation,) = typing.get_args(args)
                 return Reduce(T, mapping_for(annotation))
 
+    if hasattr(T, "__ags_lower__") and hasattr(T, "__ags_unlower__"):
+        # WARNING: this is an undocumented API that serves a transitionary
+        # purpose. It may be removed or changed at any point in future.
+        annotation = inspect.signature(T.__ags_lower__).return_annotation
+        return AGSReduce(T, mapping_for(annotation))
+
     raise ValueError(f"cannot find a mapping for type {T!r}")
 
 
@@ -431,3 +437,16 @@ class Reduce:
 
     def unlower(self, obj, surject):
         return self.T(self.mapping.unlower(obj, surject))
+
+
+@dataclasses.dataclass
+class AGSReduce:
+    T: type
+    mapping: Mapping
+
+    def lower(self, obj, inject):
+        assert_isinstance(obj, self.T)
+        return self.mapping.lower(obj.__ags_lower__(), inject)
+
+    def unlower(self, obj, surject):
+        return self.T.__ags_unlower__(self.mapping.unlower(obj, surject))

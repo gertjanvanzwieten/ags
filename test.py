@@ -170,6 +170,24 @@ class Mapping(TestCase):
                 a = A([2, 3, 4])
                 self.assertEqual(self.check(a, A), [2, 3, 4])
 
+    def test_ags_reduce(self):
+        class A:
+            def __init__(self, x: int):
+                self.x = x
+
+            def __ags_lower__(self) -> int:
+                return self.x
+
+            @classmethod
+            def __ags_unlower__(cls, obj: int):
+                return cls(obj)
+
+            def __eq__(self, other):
+                return isinstance(other, A) and other.x == self.x
+
+        a = A(5)
+        self.assertEqual(self.check(a, A), 5)
+
     def test_exception(self):
         T = dict[str, list[int]]
         m = _mapping.mapping_for(T)
