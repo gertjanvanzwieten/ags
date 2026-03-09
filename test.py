@@ -198,7 +198,7 @@ class Backend:
                 Demo.B("a", Demo.B.Sub(b"foo", "αβγ")),
                 Demo.B("b", Demo.B.Sub(b"bar", None)),
             ],
-            direction=Demo.Right(datetime.fromtimestamp(1753600000)),
+            direction=Demo.Right(datetime.fromisoformat("2025-07-27T09:06:40")),
         )
         with self.subTest("load"):
             obj = self.mod.load(StringIO(expect), sig)
