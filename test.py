@@ -76,8 +76,10 @@ class Mapping(TestCase):
             i: int = 10
             s: str = 20
 
-        with self.assertRaisesRegex(ValueError, "in .s\(default\): expects str, got int"):
-            m = _mapping.mapping_for(A)
+        with self.assertRaisesRegex(
+            ValueError, r"in .s\(default\): expects str, got int"
+        ):
+            _mapping.mapping_for(A)
 
     def test_boundargs(self):
         def f(i: int, s: str):
@@ -92,8 +94,10 @@ class Mapping(TestCase):
             pass
 
         sig = signature(f)
-        with self.assertRaisesRegex(ValueError, "in .s\(default\): expects str, got int"):
-            m = _mapping.mapping_for(sig)
+        with self.assertRaisesRegex(
+            ValueError, r"in .s\(default\): expects str, got int"
+        ):
+            _mapping.mapping_for(sig)
 
     def test_union(self):
         for modern in False, True:
@@ -145,7 +149,7 @@ class Mapping(TestCase):
         T = dict[str, list[int]]
         m = _mapping.mapping_for(T)
         with self.assertRaisesRegex(
-            AssertionError, "in \[b\]\[1\]: <class 'str'> is not <class 'int'>"
+            AssertionError, r"in \[b\]\[1\]: <class 'str'> is not <class 'int'>"
         ):
             m.unlower({"a": [10, 20], "b": [30, "40", 50]}, self.mysurject)
 
