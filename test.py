@@ -1,17 +1,19 @@
 from dataclasses import dataclass
 from enum import Enum
 from inspect import signature
-from typing import Union, Literal, Tuple, List, Dict, Optional, Self, Type
+import typing
 from unittest import TestCase
 from io import StringIO
 from datetime import date, time, datetime
 from doctest import DocFileSuite
+import sys
 
 from ags import _mapping
 
 
 def load_tests(loader, tests, ignore):
-    tests.addTests(DocFileSuite("README.md"))
+    if sys.version_info >= (3, 11):
+        tests.addTests(DocFileSuite("README.md"))
     return tests
 
 
@@ -37,7 +39,7 @@ class Mapping(TestCase):
                 self.assertEqual(self.check(obj, T), obj)
 
     def test_literal(self):
-        T = Literal["abc", 123]
+        T = typing.Literal["abc", 123]
         for obj in "abc", 123:
             self.assertEqual(self.check(obj, T), obj)
 
@@ -49,17 +51,19 @@ class Mapping(TestCase):
         self.check(b"abc", bytes)
 
     def test_list(self):
-        self.assertEqual(self.check([1, 2, 3], List[int]), [1, 2, 3])
+        self.assertEqual(self.check([1, 2, 3], typing.List[int]), [1, 2, 3])
 
     def test_tuple(self):
         with self.subTest("uniform"):
-            self.assertEqual(self.check((1, 2, 3), Tuple[int, ...]), [1, 2, 3])
+            self.assertEqual(self.check((1, 2, 3), typing.Tuple[int, ...]), [1, 2, 3])
         with self.subTest("pluriform"):
-            self.assertEqual(self.check((123, "abc"), Tuple[int, str]), [123, "abc"])
+            self.assertEqual(
+                self.check((123, "abc"), typing.Tuple[int, str]), [123, "abc"]
+            )
 
     def test_dict(self):
         self.assertEqual(
-            self.check({"a": 10, "b": 20}, Dict[str, int]), {"a": 10, "b": 20}
+            self.check({"a": 10, "b": 20}, typing.Dict[str, int]), {"a": 10, "b": 20}
         )
 
     def test_dataclass(self):
@@ -102,17 +106,21 @@ class Mapping(TestCase):
     def test_union(self):
         for modern in False, True:
             with self.subTest("optional", modern=modern):
-                T = int | None if modern else Optional[int]
+                T = int | None if modern else typing.Optional[int]
                 self.assertEqual(self.check(123, T), _mapping.OptionalValue(123))
                 self.assertEqual(self.check(None, T), _mapping.OptionalValue(None))
             with self.subTest("union", modern=modern):
-                T = int | str if modern else Union[int, str]
+                T = int | str if modern else typing.Union[int, str]
                 self.assertEqual(self.check(123, T), _mapping.UnionValue("int", 123))
                 self.assertEqual(
                     self.check("abc", T), _mapping.UnionValue("str", "abc")
                 )
             with self.subTest("optional-union", modern=modern):
-                T = int | str | None if modern else Optional[Union[int, str]]
+                T = (
+                    int | str | None
+                    if modern
+                    else typing.Optional[typing.Union[int, str]]
+                )
                 self.assertEqual(
                     self.check(123, T),
                     _mapping.OptionalValue(_mapping.UnionValue("int", 123)),
@@ -132,11 +140,19 @@ class Mapping(TestCase):
         self.assertEqual(self.check(E.b, E), "b")
 
     def test_reduce(self):
+        if sys.version_info < (3, 11):
+            self.skipTest("reduce is supported as of Python 3.11")
+
         class A:
-            def __init__(self, x: List[int]):
+            def __init__(self, x: typing.List[int]):
                 self.x = x
 
-            def __reduce__(self) -> Tuple[Type[Self], Tuple[List[int]]]:
+            def __reduce__(
+                self,
+            ) -> typing.Tuple[
+                typing.Type[typing.Self],
+                typing.Tuple[typing.List[int]],
+            ]:
                 return A, (self.x,)
 
             def __eq__(self, other):
@@ -165,9 +181,9 @@ class Demo:
         @dataclass
         class Sub:
             b: bytes
-            greek: Optional[str]
+            greek: typing.Optional[str]
 
-        abc: Literal["a", "b", "c"]
+        abc: typing.Literal["a", "b", "c"]
         sub: Sub
 
     @dataclass
@@ -178,7 +194,7 @@ class Demo:
     class Right:
         when: datetime
 
-    def func(a: A, b: List[B], direction: Union[Left, Right]):
+    def func(a: A, b: typing.List[B], direction: typing.Union[Left, Right]):
         pass
 
 

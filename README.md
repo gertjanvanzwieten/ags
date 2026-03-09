@@ -136,7 +136,7 @@ all the backends that follow.
   This is a convenient way of lowering all arguments of a function to and
   from a dictionary.
 
-- objects that reduce to a single constructor argument
+- objects that reduce to a single constructor argument (Python >= 3.11)
 
   Lastly, objects that reduce to their own class and a single argument are
   identified by that argument.

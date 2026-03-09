@@ -4,6 +4,7 @@ import enum
 import inspect
 import typing
 import types
+import sys
 
 
 PRIMITIVES = (
@@ -161,7 +162,7 @@ def mapping_for(T) -> Mapping:
                 mappings[param.name] = mapping
         return Signature(T, mappings)
 
-    if hasattr(T, "__reduce__"):
+    if sys.version_info >= (3, 11) and hasattr(T, "__reduce__"):
         ret = inspect.signature(T.__reduce__).return_annotation
         if typing.get_origin(ret) is tuple and len(typing.get_args(ret)) == 2:
             f, args = typing.get_args(ret)
