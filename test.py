@@ -51,20 +51,26 @@ class Mapping(TestCase):
         self.check(b"abc", bytes)
 
     def test_list(self):
-        self.assertEqual(self.check([1, 2, 3], typing.List[int]), [1, 2, 3])
+        for modern in False, True:
+            with self.subTest(modern=modern):
+                List = list if modern else typing.List
+                self.assertEqual(self.check([1, 2, 3], List[int]), [1, 2, 3])
 
     def test_tuple(self):
-        with self.subTest("uniform"):
-            self.assertEqual(self.check((1, 2, 3), typing.Tuple[int, ...]), [1, 2, 3])
-        with self.subTest("pluriform"):
-            self.assertEqual(
-                self.check((123, "abc"), typing.Tuple[int, str]), [123, "abc"]
-            )
+        for modern in False, True:
+            Tuple = tuple if modern else typing.Tuple
+            with self.subTest("uniform", modern=modern):
+                self.assertEqual(self.check((1, 2, 3), Tuple[int, ...]), [1, 2, 3])
+            with self.subTest("pluriform", modern=modern):
+                self.assertEqual(
+                    self.check((123, "abc"), Tuple[int, str]), [123, "abc"]
+                )
 
     def test_dict(self):
-        self.assertEqual(
-            self.check({"a": 10, "b": 20}, typing.Dict[str, int]), {"a": 10, "b": 20}
-        )
+        for modern in False, True:
+            with self.subTest(modern=modern):
+                Dict = dict if modern else typing.Dict
+                self.check({"a": 10, "b": 20}, Dict[str, int]), {"a": 10, "b": 20}
 
     def test_dataclass(self):
         @dataclass
@@ -143,23 +149,26 @@ class Mapping(TestCase):
         if sys.version_info < (3, 11):
             self.skipTest("reduce is supported as of Python 3.11")
 
-        class A:
-            def __init__(self, x: typing.List[int]):
-                self.x = x
+        for modern in False, True:
+            with self.subTest(modern=modern):
+                List = list if modern else typing.List
+                Tuple = tuple if modern else typing.Tuple
+                Type = type if modern else typing.Type
 
-            def __reduce__(
-                self,
-            ) -> typing.Tuple[
-                typing.Type[typing.Self],
-                typing.Tuple[typing.List[int]],
-            ]:
-                return A, (self.x,)
+                class A:
+                    def __init__(self, x: List[int]):
+                        self.x = x
 
-            def __eq__(self, other):
-                return isinstance(other, A) and other.x == self.x
+                    def __reduce__(
+                        self,
+                    ) -> Tuple[Type[typing.Self], Tuple[List[int]]]:
+                        return A, (self.x,)
 
-        a = A([2, 3, 4])
-        self.assertEqual(self.check(a, A), [2, 3, 4])
+                    def __eq__(self, other):
+                        return isinstance(other, A) and other.x == self.x
+
+                a = A([2, 3, 4])
+                self.assertEqual(self.check(a, A), [2, 3, 4])
 
     def test_exception(self):
         T = dict[str, list[int]]
