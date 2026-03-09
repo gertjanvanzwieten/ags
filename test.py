@@ -1,17 +1,19 @@
 from dataclasses import dataclass
 from enum import Enum
 from inspect import signature
-from typing import Union, Literal, Tuple, List, Dict, Optional, Self, Type
+import typing
 from unittest import TestCase
 from io import StringIO
 from datetime import date, time, datetime
 from doctest import DocFileSuite
+import sys
 
 from ags import _mapping
 
 
 def load_tests(loader, tests, ignore):
-    tests.addTests(DocFileSuite("README.md"))
+    if sys.version_info >= (3, 11):
+        tests.addTests(DocFileSuite("README.md"))
     return tests
 
 
@@ -37,7 +39,7 @@ class Mapping(TestCase):
                 self.assertEqual(self.check(obj, T), obj)
 
     def test_literal(self):
-        T = Literal["abc", 123]
+        T = typing.Literal["abc", 123]
         for obj in "abc", 123:
             self.assertEqual(self.check(obj, T), obj)
 
@@ -49,18 +51,26 @@ class Mapping(TestCase):
         self.check(b"abc", bytes)
 
     def test_list(self):
-        self.assertEqual(self.check([1, 2, 3], List[int]), [1, 2, 3])
+        for modern in False, True:
+            with self.subTest(modern=modern):
+                List = list if modern else typing.List
+                self.assertEqual(self.check([1, 2, 3], List[int]), [1, 2, 3])
 
     def test_tuple(self):
-        with self.subTest("uniform"):
-            self.assertEqual(self.check((1, 2, 3), Tuple[int, ...]), [1, 2, 3])
-        with self.subTest("pluriform"):
-            self.assertEqual(self.check((123, "abc"), Tuple[int, str]), [123, "abc"])
+        for modern in False, True:
+            Tuple = tuple if modern else typing.Tuple
+            with self.subTest("uniform", modern=modern):
+                self.assertEqual(self.check((1, 2, 3), Tuple[int, ...]), [1, 2, 3])
+            with self.subTest("pluriform", modern=modern):
+                self.assertEqual(
+                    self.check((123, "abc"), Tuple[int, str]), [123, "abc"]
+                )
 
     def test_dict(self):
-        self.assertEqual(
-            self.check({"a": 10, "b": 20}, Dict[str, int]), {"a": 10, "b": 20}
-        )
+        for modern in False, True:
+            with self.subTest(modern=modern):
+                Dict = dict if modern else typing.Dict
+                self.check({"a": 10, "b": 20}, Dict[str, int]), {"a": 10, "b": 20}
 
     def test_dataclass(self):
         @dataclass
@@ -76,8 +86,10 @@ class Mapping(TestCase):
             i: int = 10
             s: str = 20
 
-        with self.assertRaisesRegex(ValueError, "in .s\(default\): expects str, got int"):
-            m = _mapping.mapping_for(A)
+        with self.assertRaisesRegex(
+            ValueError, r"in .s\(default\): expects str, got int"
+        ):
+            _mapping.mapping_for(A)
 
     def test_boundargs(self):
         def f(i: int, s: str):
@@ -92,23 +104,29 @@ class Mapping(TestCase):
             pass
 
         sig = signature(f)
-        with self.assertRaisesRegex(ValueError, "in .s\(default\): expects str, got int"):
-            m = _mapping.mapping_for(sig)
+        with self.assertRaisesRegex(
+            ValueError, r"in .s\(default\): expects str, got int"
+        ):
+            _mapping.mapping_for(sig)
 
     def test_union(self):
         for modern in False, True:
             with self.subTest("optional", modern=modern):
-                T = int | None if modern else Optional[int]
+                T = int | None if modern else typing.Optional[int]
                 self.assertEqual(self.check(123, T), _mapping.OptionalValue(123))
                 self.assertEqual(self.check(None, T), _mapping.OptionalValue(None))
             with self.subTest("union", modern=modern):
-                T = int | str if modern else Union[int, str]
+                T = int | str if modern else typing.Union[int, str]
                 self.assertEqual(self.check(123, T), _mapping.UnionValue("int", 123))
                 self.assertEqual(
                     self.check("abc", T), _mapping.UnionValue("str", "abc")
                 )
             with self.subTest("optional-union", modern=modern):
-                T = int | str | None if modern else Optional[Union[int, str]]
+                T = (
+                    int | str | None
+                    if modern
+                    else typing.Optional[typing.Union[int, str]]
+                )
                 self.assertEqual(
                     self.check(123, T),
                     _mapping.OptionalValue(_mapping.UnionValue("int", 123)),
@@ -128,24 +146,35 @@ class Mapping(TestCase):
         self.assertEqual(self.check(E.b, E), "b")
 
     def test_reduce(self):
-        class A:
-            def __init__(self, x: List[int]):
-                self.x = x
+        if sys.version_info < (3, 11):
+            self.skipTest("reduce is supported as of Python 3.11")
 
-            def __reduce__(self) -> Tuple[Type[Self], Tuple[List[int]]]:
-                return A, (self.x,)
+        for modern in False, True:
+            with self.subTest(modern=modern):
+                List = list if modern else typing.List
+                Tuple = tuple if modern else typing.Tuple
+                Type = type if modern else typing.Type
 
-            def __eq__(self, other):
-                return isinstance(other, A) and other.x == self.x
+                class A:
+                    def __init__(self, x: List[int]):
+                        self.x = x
 
-        a = A([2, 3, 4])
-        self.assertEqual(self.check(a, A), [2, 3, 4])
+                    def __reduce__(
+                        self,
+                    ) -> Tuple[Type[typing.Self], Tuple[List[int]]]:
+                        return A, (self.x,)
+
+                    def __eq__(self, other):
+                        return isinstance(other, A) and other.x == self.x
+
+                a = A([2, 3, 4])
+                self.assertEqual(self.check(a, A), [2, 3, 4])
 
     def test_exception(self):
         T = dict[str, list[int]]
         m = _mapping.mapping_for(T)
         with self.assertRaisesRegex(
-            AssertionError, "in \[b\]\[1\]: <class 'str'> is not <class 'int'>"
+            AssertionError, r"in \[b\]\[1\]: <class 'str'> is not <class 'int'>"
         ):
             m.unlower({"a": [10, 20], "b": [30, "40", 50]}, self.mysurject)
 
@@ -161,9 +190,9 @@ class Demo:
         @dataclass
         class Sub:
             b: bytes
-            greek: Optional[str]
+            greek: typing.Optional[str]
 
-        abc: Literal["a", "b", "c"]
+        abc: typing.Literal["a", "b", "c"]
         sub: Sub
 
     @dataclass
@@ -174,7 +203,7 @@ class Demo:
     class Right:
         when: datetime
 
-    def func(a: A, b: List[B], direction: Union[Left, Right]):
+    def func(a: A, b: typing.List[B], direction: typing.Union[Left, Right]):
         pass
 
 
@@ -194,7 +223,7 @@ class Backend:
                 Demo.B("a", Demo.B.Sub(b"foo", "αβγ")),
                 Demo.B("b", Demo.B.Sub(b"bar", None)),
             ],
-            direction=Demo.Right(datetime.fromtimestamp(1753600000)),
+            direction=Demo.Right(datetime.fromisoformat("2025-07-27T09:06:40")),
         )
         with self.subTest("load"):
             obj = self.mod.load(StringIO(expect), sig)

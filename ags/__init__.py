@@ -1,4 +1,4 @@
-__version__ = "0.2"
+__version__ = "0.2.1"
 
 
 def _get_backend_for(path):
@@ -7,9 +7,7 @@ def _get_backend_for(path):
     elif path.endswith(".yml"):
         from . import yaml as backend
     else:
-        from . import error
-
-        raise error.AGSError("unrecognized file format")
+        raise ValueError(f"unrecognized file format for path {path!r}")
     return backend
 
 
