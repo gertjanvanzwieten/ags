@@ -1,0 +1,77 @@
+name: test
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+defaults:
+  run:
+    shell: bash
+jobs:
+  build-python-package:
+    name: Build Python package
+    runs-on: ubuntu-latest
+    outputs:
+      wheel: ${{ steps.build.outputs.wheel }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install build dependencies
+        run: python -um pip install flit
+      - name: Build package
+        id: build
+        run: |
+          # To make the wheels reproducible, set the timestamp of the (files in
+          # the) generated wheels to the date of the commit.
+          export SOURCE_DATE_EPOCH=`git show -s --format=%ct`
+          python -um flit build
+          echo wheel=`echo dist/*.whl` >> $GITHUB_OUTPUT
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package
+          path: dist/
+          if-no-files-found: error
+  test:
+    needs: build-python-package
+    name: 'Test ${{ matrix.name }}'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - {name: "baseline", os: ubuntu-latest, python-version: "3.14"}
+          - {name: "windows", os: windows-latest, python-version: "3.14"}
+          - {name: "macos", os: macos-latest, python-version: "3.14"}
+          - {name: "python 3.10", os: ubuntu-latest, python-version: "3.10"}
+          - {name: "python 3.11", os: ubuntu-latest, python-version: "3.11"}
+          - {name: "python 3.12", os: ubuntu-latest, python-version: "3.12"}
+          - {name: "python 3.13", os: ubuntu-latest, python-version: "3.13"}
+      fail-fast: false
+    env:
+      _wheel: ${{ needs.build-python-package.outputs.wheel }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Move source directory
+        run: mv ags _ags
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Download Python package artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package
+          path: dist/
+      - name: Install AGS and dependencies
+        id: install
+        run: |
+          python -um pip install --upgrade --upgrade-strategy eager wheel
+          # Install AGS from `dist` dir created in job `build-python-package`.
+          python -um pip install --upgrade --upgrade-strategy eager "$_wheel[yaml]"
+      - name: Test
+        run: python -m unittest -bv
