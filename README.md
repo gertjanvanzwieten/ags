@@ -136,10 +136,37 @@ all the backends that follow.
   This is a convenient way of lowering all arguments of a function to and
   from a dictionary.
 
+- objects that define `__into_ags__` and `__from_ags__`
+
+  Any object can make itself suitable for AGS by defining two special methods
+  that transform the object into and out of an alternative form which AGS does
+  know how to handle. Here is an example of a custom class that is serilialized
+  as a string:
+
+  ```python
+  >>> from typing import Self
+  >>>
+  >>> class MyClass:
+  ...     def __init__(self, s: str):
+  ...         self.s = s
+  ...     def __into_ags__(self) -> str:
+  ...         return self.s
+  ...     @classmethod
+  ...     def __from_ags__(cls, s: str):
+  ...         return cls(self.s)
+  >>>
+  >>> ags.json.dumps(MyClass("foo"), MyClass)
+  '"foo"\n'
+
+  ```
+
 - objects that reduce to a single constructor argument (Python >= 3.11)
 
   Lastly, objects that reduce to their own class and a single argument are
-  identified by that argument.
+  identified by that argument. This is very similar to the `__into_ags__`
+  method except that this also affects the way the object is pickled. It also
+  requires a particular annotation for AGS to recognize the pattern, which is
+  only avaliable as of Python 3.11:
 
   ```python
   >>> from typing import Self
@@ -154,9 +181,6 @@ all the backends that follow.
   '"foo"\n'
 
   ```
-
-  The particular return annotation for the `__reduce__` method is required for
-  AGS to recognize this structure.
 
 ### Step 2: Lower AGS primitives to the domain of the backend
 
