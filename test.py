@@ -175,11 +175,11 @@ class Mapping(TestCase):
             def __init__(self, x: int):
                 self.x = x
 
-            def __ags_lower__(self) -> int:
+            def __into_ags__(self) -> int:
                 return self.x
 
             @classmethod
-            def __ags_unlower__(cls, obj: int):
+            def __from_ags__(cls, obj: int):
                 return cls(obj)
 
             def __eq__(self, other):
