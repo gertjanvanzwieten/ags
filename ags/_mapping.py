@@ -357,7 +357,7 @@ class Dict:
 @dataclasses.dataclass
 class DataClass:
     cls: type
-    fields: dict[str, typing.Any]
+    fields: dict[str, Mapping]
 
     def lower(self, obj, inject):
         if not dataclasses.is_dataclass(obj) or isinstance(obj, type):
@@ -371,9 +371,12 @@ class DataClass:
     def unlower(self, obj, surject):
         dobj = surject(obj, dict)
         d = {}
-        for name, mapping in self.fields.items():
+        for name, value in dobj.items():
+            mapping = self.fields.get(name)
+            if mapping is None:
+                raise ValueError(f"invalid field: {name!r}")
             with context(f".{name}"):
-                d[name] = mapping.unlower(dobj[name], surject)
+                d[name] = mapping.unlower(value, surject)
         return self.cls(**d)
 
 
