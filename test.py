@@ -7,6 +7,7 @@ from io import StringIO
 from datetime import date, time, datetime
 from doctest import DocFileSuite
 import sys
+import traceback
 
 from ags import _mapping
 
@@ -86,10 +87,15 @@ class Mapping(TestCase):
             i: int = 10
             s: str = 20
 
-        with self.assertRaisesRegex(
-            ValueError, r"in .s\(default\): expects str, got int"
-        ):
+        with self.assertRaises(ValueError) as cm:
             _mapping.mapping_for(A)
+        s = traceback.format_exception(cm.exception)
+        self.assertEqual(s, [
+            'ValueError: expects str, got int\n',
+            'In: .s(default)\n',
+        ] if sys.version_info >= (3, 11) else [
+            'ValueError: expects str, got int\n',
+        ])
 
     def test_boundargs(self):
         def f(i: int, s: str):
@@ -104,10 +110,15 @@ class Mapping(TestCase):
             pass
 
         sig = signature(f)
-        with self.assertRaisesRegex(
-            ValueError, r"in .s\(default\): expects str, got int"
-        ):
+        with self.assertRaises(ValueError) as cm:
             _mapping.mapping_for(sig)
+        s = traceback.format_exception(cm.exception)
+        self.assertEqual(s, [
+            'ValueError: expects str, got int\n',
+            'In: .s(default)\n',
+        ] if sys.version_info >= (3, 11) else [
+            'ValueError: expects str, got int\n',
+        ])
 
     def test_union(self):
         for modern in False, True:
@@ -191,10 +202,15 @@ class Mapping(TestCase):
     def test_exception(self):
         T = dict[str, list[int]]
         m = _mapping.mapping_for(T)
-        with self.assertRaisesRegex(
-            AssertionError, r"in \[b\]\[1\]: <class 'str'> is not <class 'int'>"
-        ):
+        with self.assertRaises(AssertionError) as cm:
             m.unlower({"a": [10, 20], "b": [30, "40", 50]}, self.mysurject)
+        s = traceback.format_exception(cm.exception)
+        self.assertEqual(s, [
+            "AssertionError: <class 'str'> is not <class 'int'>\n",
+            'In: [b][1]\n',
+        ] if sys.version_info >= (3, 11) else [
+            "AssertionError: <class 'str'> is not <class 'int'>\n",
+        ])
 
 
 class Demo:

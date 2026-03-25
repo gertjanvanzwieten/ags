@@ -28,27 +28,17 @@ class context:
         pass
 
     def __exit__(self, exc_type, exc_value, traceback):
-        if exc_value and len(exc_value.args) == 1:
-            (arg,) = exc_value.args
-            if not isinstance(arg, ErrorContext):
-                arg = ErrorContext(arg)
-                exc_value.args = (arg,)
-            arg.prepend(self.context)
-
-
-class ErrorContext:
-    def __init__(self, message):
-        self.message = message
-        self.context = ""
-
-    def prepend(self, context):
-        self.context = context + self.context
-
-    def __str__(self):
-        return f"in {self.context}: {self.message}"
-
-    def __repr__(self):
-        return f"in {self.context}: {self.message!r}"
+        if not exc_value:
+            return
+        if not hasattr(exc_value, '__notes__'):
+            notes = []
+            exc_value.__notes__ = notes
+        else:
+            notes = exc_value.__notes__
+        note = "In: " + self.context
+        if notes and notes[-1].startswith("In: "):
+            note += notes.pop()[4:]
+        notes.append(note)
 
 
 def mismatch(expect, got):
@@ -150,12 +140,12 @@ def mapping_for(T) -> Mapping:
             with context(f".{param.name}"):
                 if param.kind not in (param.POSITIONAL_OR_KEYWORD, param.KEYWORD_ONLY):
                     raise TypeError("positional-only arguments are not supported")
-                if param.annotation != param.empty:
+                if param.annotation is not param.empty:
                     mapping = mapping_for(param.annotation)
-                    if param.default != param.empty:
+                    if param.default is not param.empty:
                         with context("(default)"):
                             mapping.lower(param.default, inject_none)
-                elif param.default != param.empty:
+                elif param.default is not param.empty:
                     mapping = mapping_for(type(param.default))
                 else:
                     raise TypeError(f"cannot establish type for parameter {param.name}")
