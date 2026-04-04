@@ -530,8 +530,10 @@ class UCSL(Backend, TestCase):
         self.check_lower([""], expect="[]")
 
     def test_dict(self):
-        obj = {"a": "123", "b": "abc", "c": "xyz"}
-        self.check_lower(obj, expect="a=123,b=abc,c=xyz")
+        self.check_lower(
+            {"a": "123", "b": "abc", "c": "xyz"}, expect="a=123,b=abc,c=xyz"
+        )
+        self.check_lower({}, expect="")
 
     def test_union(self):
         self.check_lower(_mapping.UnionValue("abc", "123"), expect="abc[123]")

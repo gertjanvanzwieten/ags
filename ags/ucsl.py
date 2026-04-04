@@ -23,10 +23,11 @@ def _find_exposed(s: str, sub: str, start: int = 0):
 
 def _split_exposed(s: str, sep: str, maxsplit: int = -1) -> typing.List[str]:
     items = []
-    while (pos := _find_exposed(s, sep)) != -1:
-        items.append(s[:pos])
-        s = s[pos + len(sep) :]
-    items.append(s)
+    if s:
+        while (pos := _find_exposed(s, sep)) != -1:
+            items.append(s[:pos])
+            s = s[pos + len(sep) :]
+        items.append(s)
     return items
 
 
@@ -141,8 +142,6 @@ def _surject(obj, T):
             d[_expose(si[:pos])] = _expose(si[pos + 1 :])
         return d
     elif T is list:
-        if obj == "":
-            return []
         return [_expose(item) for item in _split_exposed(obj, ",")]
     else:
         raise TypeError(f"unsupported type: {T.__name__}")
