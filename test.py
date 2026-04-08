@@ -90,12 +90,17 @@ class Mapping(TestCase):
         with self.assertRaises(ValueError) as cm:
             _mapping.mapping_for(A)
         s = traceback.format_exception(cm.exception)
-        self.assertEqual(s, [
-            'ValueError: expects str, got int\n',
-            'In: .s(default)\n',
-        ] if sys.version_info >= (3, 11) else [
-            'ValueError: expects str, got int\n',
-        ])
+        self.assertEqual(
+            s,
+            [
+                "ValueError: expects str, got int\n",
+                "In: .s(default)\n",
+            ]
+            if sys.version_info >= (3, 11)
+            else [
+                "ValueError: expects str, got int\n",
+            ],
+        )
 
     def test_boundargs(self):
         def f(i: int, s: str):
@@ -113,12 +118,17 @@ class Mapping(TestCase):
         with self.assertRaises(ValueError) as cm:
             _mapping.mapping_for(sig)
         s = traceback.format_exception(cm.exception)
-        self.assertEqual(s, [
-            'ValueError: expects str, got int\n',
-            'In: .s(default)\n',
-        ] if sys.version_info >= (3, 11) else [
-            'ValueError: expects str, got int\n',
-        ])
+        self.assertEqual(
+            s,
+            [
+                "ValueError: expects str, got int\n",
+                "In: .s(default)\n",
+            ]
+            if sys.version_info >= (3, 11)
+            else [
+                "ValueError: expects str, got int\n",
+            ],
+        )
 
     def test_union(self):
         for modern in False, True:
@@ -205,12 +215,17 @@ class Mapping(TestCase):
         with self.assertRaises(AssertionError) as cm:
             m.unlower({"a": [10, 20], "b": [30, "40", 50]}, self.mysurject)
         s = traceback.format_exception(cm.exception)
-        self.assertEqual(s, [
-            "AssertionError: <class 'str'> is not <class 'int'>\n",
-            'In: [b][1]\n',
-        ] if sys.version_info >= (3, 11) else [
-            "AssertionError: <class 'str'> is not <class 'int'>\n",
-        ])
+        self.assertEqual(
+            s,
+            [
+                "AssertionError: <class 'str'> is not <class 'int'>\n",
+                "In: [b][1]\n",
+            ]
+            if sys.version_info >= (3, 11)
+            else [
+                "AssertionError: <class 'str'> is not <class 'int'>\n",
+            ],
+        )
 
 
 class Demo:
@@ -515,8 +530,10 @@ class UCSL(Backend, TestCase):
         self.check_lower([""], expect="[]")
 
     def test_dict(self):
-        obj = {"a": "123", "b": "abc", "c": "xyz"}
-        self.check_lower(obj, expect="a=123,b=abc,c=xyz")
+        self.check_lower(
+            {"a": "123", "b": "abc", "c": "xyz"}, expect="a=123,b=abc,c=xyz"
+        )
+        self.check_lower({}, expect="")
 
     def test_union(self):
         self.check_lower(_mapping.UnionValue("abc", "123"), expect="abc[123]")
@@ -524,7 +541,8 @@ class UCSL(Backend, TestCase):
 
     def test_optional(self):
         self.check_lower(_mapping.OptionalValue("abc"), expect="abc")
-        self.check_lower(_mapping.OptionalValue("-"), expect="[-]")
+        self.check_lower(_mapping.OptionalValue("-"), expect="~-")
+        self.check_lower(_mapping.OptionalValue("~-"), expect="~~-")
         self.check_lower(_mapping.OptionalValue("a-z"), expect="a-z")
         self.check_lower(_mapping.OptionalValue(None), expect="-")
 
