@@ -541,7 +541,8 @@ class UCSL(Backend, TestCase):
 
     def test_optional(self):
         self.check_lower(_mapping.OptionalValue("abc"), expect="abc")
-        self.check_lower(_mapping.OptionalValue("-"), expect="[-]")
+        self.check_lower(_mapping.OptionalValue("-"), expect="~-")
+        self.check_lower(_mapping.OptionalValue("~-"), expect="~~-")
         self.check_lower(_mapping.OptionalValue("a-z"), expect="a-z")
         self.check_lower(_mapping.OptionalValue(None), expect="-")
 

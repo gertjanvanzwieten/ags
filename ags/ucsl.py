@@ -11,6 +11,7 @@ from . import _mapping
 _BRACKETS = re.compile(r"([\[\]])")  # [ or ]
 _SCOPED = re.compile(r"^\[(.*)\]$")  # [[foo[bar]]] --group1-> [foo[bar]]
 _FENCED = re.compile(r"^\[*~(.*)~\]*$")  # [[[~foo]bar~]] --group1-> foo]bar
+_DASH = re.compile(r"[~]*[-]")  # -, ~-, ~~~- etc
 
 
 def _find_exposed(s: str, sub: str, start: int = 0):
@@ -93,7 +94,12 @@ def _inject(obj):
     elif type(obj) is _mapping.UnionValue:
         return _cover(obj.name, "\[") + _cover(obj.value, ".")
     elif type(obj) is _mapping.OptionalValue:
-        return "-" if obj.value is None else _cover(obj.value, "^-$")
+        if obj.value is None:
+            return "-"
+        elif _DASH.fullmatch(obj.value):
+            return "~" + obj.value
+        else:
+            return obj.value
     elif type(obj) is dict:
         return ",".join(
             _cover(k, "[,=]") + "=" + _cover(v, ",") for k, v in obj.items()
@@ -132,7 +138,9 @@ def _surject(obj, T):
             return obj, ""
         return _mapping.UnionValue(_expose(obj[:pos]), _expose(obj[pos:]))
     elif T is _mapping.OptionalValue:
-        return _mapping.OptionalValue(None if obj == "-" else _expose(obj))
+        return _mapping.OptionalValue(
+            None if obj == "-" else obj[1:] if _DASH.fullmatch(obj) else obj
+        )
     elif T is dict:
         d = {}
         for si in _split_exposed(obj, ","):
