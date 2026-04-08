@@ -90,12 +90,17 @@ class Mapping(TestCase):
         with self.assertRaises(ValueError) as cm:
             _mapping.mapping_for(A)
         s = traceback.format_exception(cm.exception)
-        self.assertEqual(s, [
-            'ValueError: expects str, got int\n',
-            'In: .s(default)\n',
-        ] if sys.version_info >= (3, 11) else [
-            'ValueError: expects str, got int\n',
-        ])
+        self.assertEqual(
+            s,
+            [
+                "ValueError: expects str, got int\n",
+                "In: .s(default)\n",
+            ]
+            if sys.version_info >= (3, 11)
+            else [
+                "ValueError: expects str, got int\n",
+            ],
+        )
 
     def test_boundargs(self):
         def f(i: int, s: str):
@@ -113,12 +118,17 @@ class Mapping(TestCase):
         with self.assertRaises(ValueError) as cm:
             _mapping.mapping_for(sig)
         s = traceback.format_exception(cm.exception)
-        self.assertEqual(s, [
-            'ValueError: expects str, got int\n',
-            'In: .s(default)\n',
-        ] if sys.version_info >= (3, 11) else [
-            'ValueError: expects str, got int\n',
-        ])
+        self.assertEqual(
+            s,
+            [
+                "ValueError: expects str, got int\n",
+                "In: .s(default)\n",
+            ]
+            if sys.version_info >= (3, 11)
+            else [
+                "ValueError: expects str, got int\n",
+            ],
+        )
 
     def test_union(self):
         for modern in False, True:
@@ -205,12 +215,17 @@ class Mapping(TestCase):
         with self.assertRaises(AssertionError) as cm:
             m.unlower({"a": [10, 20], "b": [30, "40", 50]}, self.mysurject)
         s = traceback.format_exception(cm.exception)
-        self.assertEqual(s, [
-            "AssertionError: <class 'str'> is not <class 'int'>\n",
-            'In: [b][1]\n',
-        ] if sys.version_info >= (3, 11) else [
-            "AssertionError: <class 'str'> is not <class 'int'>\n",
-        ])
+        self.assertEqual(
+            s,
+            [
+                "AssertionError: <class 'str'> is not <class 'int'>\n",
+                "In: [b][1]\n",
+            ]
+            if sys.version_info >= (3, 11)
+            else [
+                "AssertionError: <class 'str'> is not <class 'int'>\n",
+            ],
+        )
 
 
 class Demo:

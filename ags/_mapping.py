@@ -30,7 +30,7 @@ class context:
     def __exit__(self, exc_type, exc_value, traceback):
         if not exc_value:
             return
-        if not hasattr(exc_value, '__notes__'):
+        if not hasattr(exc_value, "__notes__"):
             notes = []
             exc_value.__notes__ = notes
         else:
