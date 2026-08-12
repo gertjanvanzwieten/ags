@@ -387,70 +387,8 @@ class JSON(Backend, TestCase):
 """)
 
 
-class YAML(Backend, TestCase):
+class YAML(JSON):
     from ags import yaml as mod
-
-    def test_bool(self):
-        for obj in True, False:
-            self.check_lower(obj, expect=obj)
-
-    def test_int(self):
-        for obj in 0, 1, 2, 10, -5:
-            self.check_lower(obj, expect=obj)
-
-    def test_float(self):
-        for obj in 0.0, 1.0, 2.0, -2.5:
-            self.check_lower(obj, expect=obj)
-
-    def test_complex(self):
-        for obj in 0 + 0j, 1 + 0j:
-            self.check_lower(obj, expect=obj.real)
-        self.check_lower(1j, expect="1j")
-        self.check_lower(-2.5 + 3.5j, "-2.5+3.5j")
-
-    def test_str(self):
-        for obj in "foo", "bar":
-            self.check_lower(obj, expect=obj)
-
-    def test_bytes(self):
-        for obj in b"foo", b"bar", "αβγ".encode():
-            self.check_lower(obj, expect=obj)
-
-    def test_date(self):
-        for obj in (
-            date.fromisoformat("2000-10-15"),
-            date.fromisoformat("2025-12-31"),
-        ):
-            self.check_lower(obj, expect=obj)
-
-    def test_time(self):
-        for obj in (
-            time.fromisoformat("10:32"),
-            time.fromisoformat("22:33"),
-        ):
-            self.check_lower(obj, expect=obj)
-
-    def test_datetime(self):
-        for obj in (
-            datetime.fromisoformat("2000-10-15 10:32"),
-            datetime.fromisoformat("2025-12-31 22:33"),
-        ):
-            self.check_lower(obj, expect=obj)
-
-    def test_list(self):
-        obj = [123, "abc", ["x", "y", "z"]]
-        self.check_lower(obj, expect=obj)
-
-    def test_dict(self):
-        obj = {"a": 123, 10: "abc", True: ["x", "y", "z"]}
-        self.check_lower(obj, expect=obj)
-
-    def test_union(self):
-        self.check_lower(_mapping.UnionValue("abc", 123), expect={"abc": 123})
-
-    def test_optional(self):
-        self.check_lower(_mapping.OptionalValue("abc"), expect="abc")
-        self.check_lower(_mapping.OptionalValue(None), expect=None)
 
     def test_load_dump(self):
         self.check_load_dump("""\
@@ -458,19 +396,17 @@ a:
   x: 1
   y: 2.5
 b:
-- abc: a
-  sub:
-    b: !!binary |
-      Zm9v
-    greek: αβγ
-- abc: b
-  sub:
-    b: !!binary |
-      YmFy
-    greek: null
+  - abc: a
+    sub:
+      b: "utf8:foo"
+      greek: αβγ
+  - abc: b
+    sub:
+      b: "utf8:bar"
+      greek: ~
 direction:
   Right:
-    when: 2025-07-27 09:06:40
+    when: "2025-07-27T09:06:40"
 """)
 
 

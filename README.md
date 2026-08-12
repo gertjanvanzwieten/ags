@@ -52,7 +52,7 @@ dataclasses to dictionaries. The generated data.yml file is:
 ```yaml
 - Point:
     value: 1+2j
-    end: null
+    end: ~
 - Axis: real
 - Point:
     value: 1j
@@ -123,39 +123,8 @@ and null.
 ### YAML
 
 The YAML Ain’t Markup Language is a superset of JSON as of version 1.2, which
-means a JSON file is valid YAML, but every any YAML file is valid JSON. YAML
-notably adds the date and binary primitives, which AGS supports by passing them
-unchanged. Other Python objects are converted identically to the JSON backend:
-
-- `str`, `int`, `float`, `bool`, `bytes`, `datetime.date`, `datetime.time`, `datetime.datetime`
-
-  Passed through.
-
-- `complex`
-
-  Complex numbers without an imaginary part are converted to a float, the rest
-  to a string in Python notation (e.g. 1+2j).
-
-- `list[T]`, `tuple[T, ...]`, `tuple[T1, T2, T3]`
-
-  Lists and tuples are converted to lists of their converted items. Item type
-  annotations (e.g. `list[int]`) are required. Both uniform tuples (`tuple[int,
-  ...]`) and fixed length tuples (`tuple[int, str]`) are supported.
-
-- `dict[K, V]`
-
-  Dictionaries are converted to dictionaries with their keys and values
-  converted. Annotations for both key and value are mandatory.
-
-- `typing.Optional` or `T|None`
-
-  Optional values are converted according to the above rules or set to null if
-  left undefined.
-
-- `typing.Union` or `T1|T2|T3`
-
-  Unions of multiple types are converted to a single item dictionary, where the
-  key is the name of the type and the value the object.
+means a JSON file is valid YAML, but every any YAML file is valid JSON. All
+Python objects are converted identically to the JSON backend.
 
 ### UCSL
 
