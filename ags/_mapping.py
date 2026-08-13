@@ -150,7 +150,7 @@ def mapping_for(T) -> Mapping:
                 else:
                     raise TypeError(f"cannot establish type for parameter {param.name}")
                 mappings[param.name] = mapping
-        return Signature(T, mappings)
+        return Signature(T, Primitive(str), mappings)
 
     if sys.version_info >= (3, 11) and hasattr(T, "__reduce__"):
         ret = inspect.signature(T.__reduce__).return_annotation
@@ -386,7 +386,8 @@ class Enum:
 @dataclasses.dataclass
 class Signature:
     signature: typing.Any
-    mappings: dict[str, Mapping]
+    key_mapping: Mapping
+    val_mappings: dict[str, Mapping]
 
     def lower(self, obj, inject):
         assert_isinstance(obj, inspect.BoundArguments)
@@ -397,15 +398,16 @@ class Signature:
         d = {}
         for name, v in obj.arguments.items():
             with context(f".{name}"):
-                d[name] = self.mappings[name].lower(v, inject)
+                d[name] = self.val_mappings[name].lower(v, inject)
         return inject(d)
 
     def unlower(self, obj, surject):
         dobj = surject(obj, dict)
         d = {}
-        for name in dobj:
+        for k, v in dobj.items():
+            name = self.key_mapping.unlower(k, surject)
             with context(f".{name}"):
-                d[name] = self.mappings[name].unlower(dobj[name], surject)
+                d[name] = self.val_mappings[name].unlower(v, surject)
         return self.signature.bind(**d)
 
 
