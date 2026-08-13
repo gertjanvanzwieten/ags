@@ -337,10 +337,9 @@ class Dict:
         dobj = surject(obj, dict)
         d = {}
         for k, v in dobj.items():
-            with context(f"[{k}]"):
-                d[self.key_mapping.unlower(k, surject)] = self.val_mapping.unlower(
-                    v, surject
-                )
+            name = self.key_mapping.unlower(k, surject)
+            with context(f"[{name}]"):
+                d[name] = self.val_mapping.unlower(v, surject)
         return d
 
 
