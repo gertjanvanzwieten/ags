@@ -129,7 +129,7 @@ def mapping_for(T) -> Mapping:
                 if field.default is not dataclasses.MISSING:
                     with context("(default)"):
                         mapping.lower(field.default, inject_none)
-        return DataClass(T, fields)
+        return DataClass(T, Primitive(str), fields)
 
     if type(T) is type(enum.Enum):
         return Enum(T)
@@ -346,6 +346,7 @@ class Dict:
 @dataclasses.dataclass
 class DataClass:
     cls: type
+    key_mapping: Mapping
     fields: dict[str, Mapping]
 
     def lower(self, obj, inject):
@@ -354,13 +355,16 @@ class DataClass:
         d = {}
         for name, mapping in self.fields.items():
             with context(f".{name}"):
-                d[name] = mapping.lower(getattr(obj, name), inject)
+                d[self.key_mapping.lower(name, inject)] = mapping.lower(
+                    getattr(obj, name), inject
+                )
         return inject(d)
 
     def unlower(self, obj, surject):
         dobj = surject(obj, dict)
         d = {}
-        for name, value in dobj.items():
+        for k, value in dobj.items():
+            name = self.key_mapping.unlower(k, surject)
             mapping = self.fields.get(name)
             if mapping is None:
                 raise ValueError(f"invalid field: {name!r}")
