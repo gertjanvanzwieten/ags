@@ -18,18 +18,113 @@ def load_tests(loader, tests, ignore):
     return tests
 
 
+class Wrap:
+    def __init__(self, obj):
+        self._wrapped = obj
+
+    def __hash__(self):
+        return hash(self._wrapped)
+
+    def __eq__(self, other):
+        return isinstance(other, Wrap) and other._wrapped == self._wrapped
+
+    def __str__(self):
+        return f"<{self._wrapped!s}>"
+
+    def __repr__(self):
+        return f"<{self._wrapped!r}>"
+
+    def unwrap(self):
+        return self._wrapped
+
+
+class WrapInject:
+    def from_bool(obj: bool) -> Wrap:
+        return Wrap(obj)
+
+    def from_int(obj: int) -> Wrap:
+        return Wrap(obj)
+
+    def from_float(obj: float) -> Wrap:
+        return Wrap(obj)
+
+    def from_complex(obj: complex) -> Wrap:
+        return Wrap(obj)
+
+    def from_str(obj: str) -> Wrap:
+        return Wrap(obj)
+
+    def from_bytes(obj: bytes) -> Wrap:
+        return Wrap(obj)
+
+    def from_date(obj: date) -> Wrap:
+        return Wrap(obj)
+
+    def from_time(obj: time) -> Wrap:
+        return Wrap(obj)
+
+    def from_datetime(obj: datetime) -> Wrap:
+        return Wrap(obj)
+
+    def from_list(obj: list) -> Wrap:
+        return Wrap(obj)
+
+    def from_dict(obj: dict) -> Wrap:
+        return Wrap(obj)
+
+    def from_optional(obj: typing.Optional) -> Wrap:
+        return Wrap(obj)
+
+    def from_union(name: str, obj: typing.Any) -> Wrap:
+        return Wrap((name, obj))
+
+
+class WrapSurject:
+    def to_bool(obj: Wrap) -> bool:
+        return obj.unwrap()
+
+    def to_int(obj: Wrap) -> int:
+        return obj.unwrap()
+
+    def to_float(obj: Wrap) -> float:
+        return obj.unwrap()
+
+    def to_complex(obj: Wrap) -> complex:
+        return obj.unwrap()
+
+    def to_str(obj: Wrap) -> str:
+        return obj.unwrap()
+
+    def to_bytes(obj: Wrap) -> bytes:
+        return obj.unwrap()
+
+    def to_date(obj: Wrap) -> date:
+        return obj.unwrap()
+
+    def to_time(obj: Wrap) -> time:
+        return obj.unwrap()
+
+    def to_datetime(obj: Wrap) -> datetime:
+        return obj.unwrap()
+
+    def to_list(obj: Wrap) -> list:
+        return obj.unwrap()
+
+    def to_dict(obj: Wrap) -> dict:
+        return obj.unwrap()
+
+    def to_optional(obj: Wrap) -> typing.Optional:
+        return obj.unwrap()
+
+    def to_union(obj: Wrap) -> tuple[str, typing.Any]:
+        return obj.unwrap()
+
+
 class Mapping(TestCase):
-    def myinject(self, obj):
-        return obj
-
-    def mysurject(self, obj, T):
-        self.assertIs(type(obj), T)
-        return obj
-
     def check(self, obj, T):
         m = _mapping.mapping_for(T)
-        low = m.lower(obj, self.myinject)
-        high = m.unlower(low, self.mysurject)
+        low = m.lower(obj, WrapInject)
+        high = m.unlower(low, WrapSurject)
         self.assertEqual(high, obj)
         return low
 
@@ -37,16 +132,16 @@ class Mapping(TestCase):
         for obj in "abc", 123, 1.5, True, False:
             T = type(obj)
             with self.subTest(T.__name__):
-                self.assertEqual(self.check(obj, T), obj)
+                self.assertEqual(self.check(obj, T), Wrap(obj))
 
     def test_literal(self):
-        T = typing.Literal["abc", 123]
-        for obj in "abc", 123:
-            self.assertEqual(self.check(obj, T), obj)
+        T = typing.Literal["abc", "xyz"]
+        for obj in "abc", "xyz":
+            self.assertEqual(self.check(obj, T), Wrap(obj))
 
     def test_complex(self):
-        self.assertEqual(self.check(1 + 2j, complex), 1 + 2j)
-        self.assertEqual(self.check(3 + 0j, complex), 3 + 0j)
+        self.assertEqual(self.check(1 + 2j, complex), Wrap(1 + 2j))
+        self.assertEqual(self.check(3 + 0j, complex), Wrap(3 + 0j))
 
     def test_bytes(self):
         self.check(b"abc", bytes)
@@ -55,23 +150,32 @@ class Mapping(TestCase):
         for modern in False, True:
             with self.subTest(modern=modern):
                 List = list if modern else typing.List
-                self.assertEqual(self.check([1, 2, 3], List[int]), [1, 2, 3])
+                self.assertEqual(
+                    self.check([1, 2, 3], List[int]), Wrap([Wrap(1), Wrap(2), Wrap(3)])
+                )
 
     def test_tuple(self):
         for modern in False, True:
             Tuple = tuple if modern else typing.Tuple
             with self.subTest("uniform", modern=modern):
-                self.assertEqual(self.check((1, 2, 3), Tuple[int, ...]), [1, 2, 3])
+                self.assertEqual(
+                    self.check((1, 2, 3), Tuple[int, ...]),
+                    Wrap([Wrap(1), Wrap(2), Wrap(3)]),
+                )
             with self.subTest("pluriform", modern=modern):
                 self.assertEqual(
-                    self.check((123, "abc"), Tuple[int, str]), [123, "abc"]
+                    self.check((123, "abc"), Tuple[int, str]),
+                    Wrap([Wrap(123), Wrap("abc")]),
                 )
 
     def test_dict(self):
         for modern in False, True:
             with self.subTest(modern=modern):
                 Dict = dict if modern else typing.Dict
-                self.check({"a": 10, "b": 20}, Dict[str, int]), {"a": 10, "b": 20}
+                self.assertEqual(
+                    self.check({"a": 10, "b": 20}, Dict[str, int]),
+                    Wrap({Wrap("a"): Wrap(10), Wrap("b"): Wrap(20)}),
+                )
 
     def test_dataclass(self):
         @dataclass
@@ -79,7 +183,10 @@ class Mapping(TestCase):
             i: int
             s: str
 
-        self.assertEqual(self.check(A(123, "abc"), A), {"i": 123, "s": "abc"})
+        self.assertEqual(
+            self.check(A(123, "abc"), A),
+            Wrap({Wrap("i"): Wrap(123), Wrap("s"): Wrap("abc")}),
+        )
 
     def test_dataclass_defaults(self):
         @dataclass
@@ -87,18 +194,18 @@ class Mapping(TestCase):
             i: int = 10
             s: str = 20
 
-        with self.assertRaises(ValueError) as cm:
+        with self.assertRaises(TypeError) as cm:
             _mapping.mapping_for(A)
         s = traceback.format_exception(cm.exception)
         self.assertEqual(
             s,
             [
-                "ValueError: expects str, got int\n",
+                "TypeError: expects str, got int\n",
                 "In: .s(default)\n",
             ]
             if sys.version_info >= (3, 11)
             else [
-                "ValueError: expects str, got int\n",
+                "TypeError: expects str, got int\n",
             ],
         )
 
@@ -108,25 +215,27 @@ class Mapping(TestCase):
 
         sig = signature(f)
         bound = sig.bind(123, "abc")
-        self.assertEqual(self.check(bound, sig), {"i": 123, "s": "abc"})
+        self.assertEqual(
+            self.check(bound, sig), Wrap({Wrap("i"): Wrap(123), Wrap("s"): Wrap("abc")})
+        )
 
     def test_boundargs_defaults(self):
         def f(i: int = 10, s: str = 20):
             pass
 
         sig = signature(f)
-        with self.assertRaises(ValueError) as cm:
+        with self.assertRaises(TypeError) as cm:
             _mapping.mapping_for(sig)
         s = traceback.format_exception(cm.exception)
         self.assertEqual(
             s,
             [
-                "ValueError: expects str, got int\n",
+                "TypeError: expects str, got int\n",
                 "In: .s(default)\n",
             ]
             if sys.version_info >= (3, 11)
             else [
-                "ValueError: expects str, got int\n",
+                "TypeError: expects str, got int\n",
             ],
         )
 
@@ -134,14 +243,12 @@ class Mapping(TestCase):
         for modern in False, True:
             with self.subTest("optional", modern=modern):
                 T = int | None if modern else typing.Optional[int]
-                self.assertEqual(self.check(123, T), _mapping.OptionalValue(123))
-                self.assertEqual(self.check(None, T), _mapping.OptionalValue(None))
+                self.assertEqual(self.check(123, T), Wrap(Wrap(123)))
+                self.assertEqual(self.check(None, T), Wrap(None))
             with self.subTest("union", modern=modern):
                 T = int | str if modern else typing.Union[int, str]
-                self.assertEqual(self.check(123, T), _mapping.UnionValue("int", 123))
-                self.assertEqual(
-                    self.check("abc", T), _mapping.UnionValue("str", "abc")
-                )
+                self.assertEqual(self.check(123, T), Wrap(("int", Wrap(123))))
+                self.assertEqual(self.check("abc", T), Wrap(("str", Wrap("abc"))))
             with self.subTest("optional-union", modern=modern):
                 T = (
                     int | str | None
@@ -150,21 +257,21 @@ class Mapping(TestCase):
                 )
                 self.assertEqual(
                     self.check(123, T),
-                    _mapping.OptionalValue(_mapping.UnionValue("int", 123)),
+                    Wrap(Wrap(("int", Wrap(123)))),
                 )
                 self.assertEqual(
                     self.check("abc", T),
-                    _mapping.OptionalValue(_mapping.UnionValue("str", "abc")),
+                    Wrap(Wrap(("str", Wrap("abc")))),
                 )
-                self.assertEqual(self.check(None, T), _mapping.OptionalValue(None))
+                self.assertEqual(self.check(None, T), Wrap(None))
 
     def test_enum(self):
         class E(Enum):
             a = 1
             b = 2
 
-        self.assertEqual(self.check(E.a, E), "a")
-        self.assertEqual(self.check(E.b, E), "b")
+        self.assertEqual(self.check(E.a, E), Wrap("a"))
+        self.assertEqual(self.check(E.b, E), Wrap("b"))
 
     def test_reduce(self):
         if sys.version_info < (3, 11):
@@ -189,7 +296,7 @@ class Mapping(TestCase):
                         return isinstance(other, A) and other.x == self.x
 
                 a = A([2, 3, 4])
-                self.assertEqual(self.check(a, A), [2, 3, 4])
+                self.assertEqual(self.check(a, A), Wrap([Wrap(2), Wrap(3), Wrap(4)]))
 
     def test_ags_reduce(self):
         class A:
@@ -207,23 +314,31 @@ class Mapping(TestCase):
                 return isinstance(other, A) and other.x == self.x
 
         a = A(5)
-        self.assertEqual(self.check(a, A), 5)
+        self.assertEqual(self.check(a, A), Wrap(5))
 
     def test_exception(self):
         T = dict[str, list[int]]
         m = _mapping.mapping_for(T)
-        with self.assertRaises(AssertionError) as cm:
-            m.unlower({"a": [10, 20], "b": [30, "40", 50]}, self.mysurject)
+        with self.assertRaises(TypeError) as cm:
+            m.unlower(
+                Wrap(
+                    {
+                        Wrap("a"): Wrap([Wrap(10), Wrap(20)]),
+                        Wrap("b"): Wrap([Wrap(30), Wrap("40"), Wrap(50)]),
+                    }
+                ),
+                WrapSurject,
+            )
         s = traceback.format_exception(cm.exception)
         self.assertEqual(
             s,
             [
-                "AssertionError: <class 'str'> is not <class 'int'>\n",
+                "TypeError: expects int, got str\n",
                 "In: [b][1]\n",
             ]
             if sys.version_info >= (3, 11)
             else [
-                "AssertionError: <class 'str'> is not <class 'int'>\n",
+                "TypeError: expects int, got str\n",
             ],
         )
 
@@ -257,10 +372,82 @@ class Demo:
 
 
 class Backend:
-    def check_lower(self, obj, expect):
-        low = self.mod._inject(obj)
-        self.assertEqual(low, expect)
-        high = self.mod._surject(low, type(obj))
+    def check_bool(self, obj):
+        low = self.mod._inject.from_bool(obj)
+        high = self.mod._surject.to_bool(low)
+        self.assertEqual(high, obj)
+        return low
+
+    def check_int(self, obj):
+        low = self.mod._inject.from_int(obj)
+        high = self.mod._surject.to_int(low)
+        self.assertEqual(high, obj)
+        return low
+
+    def check_float(self, obj):
+        low = self.mod._inject.from_float(obj)
+        high = self.mod._surject.to_float(low)
+        self.assertEqual(high, obj)
+        return low
+
+    def check_complex(self, obj):
+        low = self.mod._inject.from_complex(obj)
+        high = self.mod._surject.to_complex(low)
+        self.assertEqual(high, obj)
+        return low
+
+    def check_str(self, obj):
+        low = self.mod._inject.from_str(obj)
+        high = self.mod._surject.to_str(low)
+        self.assertEqual(high, obj)
+        return low
+
+    def check_bytes(self, obj):
+        low = self.mod._inject.from_bytes(obj)
+        high = self.mod._surject.to_bytes(low)
+        self.assertEqual(high, obj)
+        return low
+
+    def check_date(self, obj):
+        low = self.mod._inject.from_date(obj)
+        high = self.mod._surject.to_date(low)
+        self.assertEqual(high, obj)
+        return low
+
+    def check_time(self, obj):
+        low = self.mod._inject.from_time(obj)
+        high = self.mod._surject.to_time(low)
+        self.assertEqual(high, obj)
+        return low
+
+    def check_datetime(self, obj):
+        low = self.mod._inject.from_datetime(obj)
+        high = self.mod._surject.to_datetime(low)
+        self.assertEqual(high, obj)
+        return low
+
+    def check_list(self, obj):
+        low = self.mod._inject.from_list(obj)
+        high = self.mod._surject.to_list(low)
+        self.assertEqual(high, obj)
+        return low
+
+    def check_dict(self, obj):
+        low = self.mod._inject.from_dict(obj)
+        high = self.mod._surject.to_dict(low)
+        self.assertEqual(high, obj)
+        return low
+
+    def check_optional(self, obj):
+        low = self.mod._inject.from_optional(obj)
+        high = self.mod._surject.to_optional(low)
+        self.assertEqual(high, obj)
+        return low
+
+    def check_union(self, name, obj):
+        low = self.mod._inject.from_union(name, obj)
+        name_, high = self.mod._surject.to_union(low)
+        self.assertEqual(name, name_)
         self.assertEqual(high, obj)
         return low
 
@@ -294,66 +481,66 @@ class JSON(Backend, TestCase):
 
     def test_bool(self):
         for obj in True, False:
-            self.check_lower(obj, expect=obj)
+            self.assertEqual(self.check_bool(obj), obj)
 
     def test_int(self):
         for obj in 0, 1, 2, 10, -5:
-            self.check_lower(obj, expect=obj)
+            self.assertEqual(self.check_int(obj), obj)
 
     def test_float(self):
         for obj in 0.0, 1.0, 2.0, -2.5:
-            self.check_lower(obj, expect=obj)
+            self.assertEqual(self.check_float(obj), obj)
 
     def test_complex(self):
         for obj in 0 + 0j, 1 + 0j:
-            self.check_lower(obj, expect=obj.real)
-        self.check_lower(1j, expect="1j")
-        self.check_lower(-2.5 + 3.5j, "-2.5+3.5j")
+            self.assertEqual(self.check_complex(obj), obj.real)
+        self.assertEqual(self.check_complex(1j), "1j")
+        self.assertEqual(self.check_complex(-2.5 + 3.5j), "-2.5+3.5j")
 
     def test_str(self):
         for obj in "foo", "bar":
-            self.check_lower(obj, expect=obj)
+            self.assertEqual(self.check_str(obj), obj)
 
     def test_bytes(self):
         for obj in b"foo", b"bar", "αβγ".encode():
-            self.check_lower(obj, expect="utf8:" + obj.decode("utf8"))
-        self.check_lower(bytes([0xC0, 0xC1, 0xF5]), expect="z`^w")
+            self.assertEqual(self.check_bytes(obj), "utf8:" + obj.decode("utf8"))
+        self.assertEqual(self.check_bytes(bytes([0xC0, 0xC1, 0xF5])), "z`^w")
 
     def test_date(self):
         for obj in (
             date.fromisoformat("2000-10-15"),
             date.fromisoformat("2025-12-31"),
         ):
-            self.check_lower(obj, expect=obj.isoformat())
+            self.assertEqual(self.check_date(obj), obj.isoformat())
 
     def test_time(self):
         for obj in (
             time.fromisoformat("10:32"),
             time.fromisoformat("22:33"),
         ):
-            self.check_lower(obj, expect=obj.isoformat())
+            self.assertEqual(self.check_time(obj), obj.isoformat())
 
     def test_datetime(self):
         for obj in (
             datetime.fromisoformat("2000-10-15 10:32"),
             datetime.fromisoformat("2025-12-31 22:33"),
         ):
-            self.check_lower(obj, expect=obj.isoformat())
+            self.assertEqual(self.check_datetime(obj), obj.isoformat())
 
     def test_list(self):
         obj = [123, "abc", ["x", "y", "z"]]
-        self.check_lower(obj, expect=obj)
+        self.assertEqual(self.check_list(obj), obj)
 
     def test_dict(self):
         obj = {"a": 123, 10: "abc", True: ["x", "y", "z"]}
-        self.check_lower(obj, expect=obj)
+        self.assertEqual(self.check_dict(obj), obj)
 
     def test_union(self):
-        self.check_lower(_mapping.UnionValue("abc", 123), expect={"abc": 123})
+        self.assertEqual(self.check_union("abc", 123), {"abc": 123})
 
     def test_optional(self):
-        self.check_lower(_mapping.OptionalValue("abc"), expect="abc")
-        self.check_lower(_mapping.OptionalValue(None), expect=None)
+        self.assertEqual(self.check_optional("abc"), "abc")
+        self.assertEqual(self.check_optional(None), None)
 
     def test_load_dump(self):
         self.check_load_dump("""\
@@ -414,73 +601,73 @@ class UCSL(Backend, TestCase):
     from ags import ucsl as mod
 
     def test_bool(self):
-        self.check_lower(True, expect="true")
-        self.check_lower(False, expect="false")
+        self.assertEqual(self.check_bool(True), "true")
+        self.assertEqual(self.check_bool(False), "false")
 
     def test_int(self):
         for obj in 0, 1, 2, 10, -5:
-            self.check_lower(obj, expect=str(obj))
+            self.assertEqual(self.check_int(obj), str(obj))
 
     def test_float(self):
         for obj in 0.0, 1.0, 2.0, -2.5:
-            self.check_lower(obj, expect=str(obj))
+            self.assertEqual(self.check_float(obj), str(obj))
 
     def test_complex(self):
         for obj in 0 + 0j, 1 + 0j, 0 + 1j, -2.5 + 3.5j:
-            self.check_lower(obj, expect=str(obj).lstrip("(").rstrip(")"))
+            self.assertEqual(self.check_complex(obj), str(obj).lstrip("(").rstrip(")"))
 
     def test_str(self):
         for obj in "foo", "bar":
-            self.check_lower(obj, expect=obj)
+            self.assertEqual(self.check_str(obj), obj)
 
     def test_bytes(self):
         for obj in b"foo", b"bar", "αβγ".encode():
-            self.check_lower(obj, expect="utf8:" + obj.decode("utf8"))
-        self.check_lower(bytes([0xC0, 0xC1, 0xF5]), expect="z`^w")
+            self.assertEqual(self.check_bytes(obj), "utf8:" + obj.decode("utf8"))
+        self.assertEqual(self.check_bytes(bytes([0xC0, 0xC1, 0xF5])), "z`^w")
 
     def test_date(self):
         for obj in (
             date.fromisoformat("2000-10-15"),
             date.fromisoformat("2025-12-31"),
         ):
-            self.check_lower(obj, expect=obj.isoformat())
+            self.assertEqual(self.check_date(obj), obj.isoformat())
 
     def test_time(self):
         for obj in (
             time.fromisoformat("10:32"),
             time.fromisoformat("22:33"),
         ):
-            self.check_lower(obj, expect=obj.isoformat())
+            self.assertEqual(self.check_time(obj), obj.isoformat())
 
     def test_datetime(self):
         for obj in (
             datetime.fromisoformat("2000-10-15 10:32"),
             datetime.fromisoformat("2025-12-31 22:33"),
         ):
-            self.check_lower(obj, expect=obj.isoformat())
+            self.assertEqual(self.check_datetime(obj), obj.isoformat())
 
     def test_list(self):
-        self.check_lower(["123", "abc", "xyz"], expect="123,abc,xyz")
-        self.check_lower([], expect="")
-        self.check_lower(["", ""], expect=",")
-        self.check_lower([""], expect="[]")
+        self.assertEqual(self.check_list(["123", "abc", "xyz"]), "123,abc,xyz")
+        self.assertEqual(self.check_list([]), "")
+        self.assertEqual(self.check_list(["", ""]), ",")
+        self.assertEqual(self.check_list([""]), "[]")
 
     def test_dict(self):
-        self.check_lower(
-            {"a": "123", "b": "abc", "c": "xyz"}, expect="a=123,b=abc,c=xyz"
+        self.assertEqual(
+            self.check_dict({"a": "123", "b": "abc", "c": "xyz"}), "a=123,b=abc,c=xyz"
         )
-        self.check_lower({}, expect="")
+        self.assertEqual(self.check_dict({}), "")
 
     def test_union(self):
-        self.check_lower(_mapping.UnionValue("abc", "123"), expect="abc[123]")
-        self.check_lower(_mapping.UnionValue("abc", ""), expect="abc")
+        self.assertEqual(self.check_union("abc", "123"), "abc[123]")
+        self.assertEqual(self.check_union("abc", ""), "abc")
 
     def test_optional(self):
-        self.check_lower(_mapping.OptionalValue("abc"), expect="abc")
-        self.check_lower(_mapping.OptionalValue("-"), expect="~-")
-        self.check_lower(_mapping.OptionalValue("~-"), expect="~~-")
-        self.check_lower(_mapping.OptionalValue("a-z"), expect="a-z")
-        self.check_lower(_mapping.OptionalValue(None), expect="-")
+        self.assertEqual(self.check_optional("abc"), "abc")
+        self.assertEqual(self.check_optional("-"), "~-")
+        self.assertEqual(self.check_optional("~-"), "~~-")
+        self.assertEqual(self.check_optional("a-z"), "a-z")
+        self.assertEqual(self.check_optional(None), "-")
 
     def test_load_dump(self):
         self.check_load_dump(
