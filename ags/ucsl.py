@@ -71,77 +71,96 @@ def _expose(s: str) -> str:
     return m.group(1) if m else s
 
 
-def _inject(obj):
-    if type(obj) is str:
-        return obj
-    elif type(obj) in (int, float):
-        return str(obj)
-    elif type(obj) is complex:
-        return str(obj).strip("()")
-    elif type(obj) is bool:
+class _inject:
+    def from_bool(obj: bool) -> str:
         return "true" if obj else "false"
-    elif type(obj) in (datetime.date, datetime.time, datetime.datetime):
-        return obj.isoformat()
-    elif type(obj) is bytes:
+
+    def from_int(obj: int) -> str:
+        return str(obj)
+
+    def from_float(obj: float) -> str:
+        return str(obj)
+
+    def from_complex(obj: complex) -> str:
+        return str(obj).strip("()")
+
+    def from_str(obj: str) -> str:
+        return obj
+
+    def from_bytes(obj: bytes) -> str:
         try:
             s = obj.decode("utf8")
         except UnicodeDecodeError:
             return base64.b85encode(obj).decode()
         else:
             return "utf8:" + s
-    elif obj is None:
-        return ""
-    elif type(obj) is _mapping.UnionValue:
-        return _cover(obj.name, "\[") + _cover(obj.value, ".")
-    elif type(obj) is _mapping.OptionalValue:
-        if obj.value is None:
-            return "-"
-        elif _DASH.fullmatch(obj.value):
-            return "~" + obj.value
-        else:
-            return obj.value
-    elif type(obj) is dict:
-        return ",".join(
-            _cover(k, "[,=]") + "=" + _cover(v, ",") for k, v in obj.items()
-        )
-    elif type(obj) is list:
+
+    def from_date(obj: datetime.date) -> str:
+        return obj.isoformat()
+
+    def from_time(obj: datetime.time) -> str:
+        return obj.isoformat()
+
+    def from_datetime(obj: datetime.datetime) -> str:
+        return obj.isoformat()
+
+    def from_list(obj: list) -> str:
         if obj == [""]:
             return "[]"
         return ",".join(_cover(item, ",") for item in obj)
-    else:
-        raise TypeError(f"unsupported type: {type(obj).__name__}")
+
+    def from_dict(obj: dict) -> str:
+        return ",".join(
+            _cover(k, "[,=]") + "=" + _cover(v, ",") for k, v in obj.items()
+        )
+
+    def from_optional(obj: str | None) -> str:
+        if obj is None:
+            return "-"
+        elif _DASH.fullmatch(obj):
+            return "~" + obj
+        else:
+            return obj
+
+    def from_union(name: str, obj: str) -> str:
+        return _cover(name, "\[") + _cover(obj, ".")
 
 
-def _surject(obj, T):
-    if type(obj) is not str:
-        raise ValueError(f"expected str, got {type(obj).__name__}")
-    if T is str:
-        return obj
-    elif T in (int, float, complex):
-        return T(obj)
-    elif T is bool:
+class _surject:
+    def to_bool(obj: str) -> bool:
         return {"true": True, "yes": True, "false": False, "no": False}[obj]
-    elif T in (datetime.date, datetime.time, datetime.datetime):
-        return T.fromisoformat(obj)
-    elif T is bytes:
+
+    def to_int(obj: str) -> int:
+        return int(obj)
+
+    def to_float(obj: str) -> float:
+        return float(obj)
+
+    def to_complex(obj: str) -> complex:
+        return complex(obj)
+
+    def to_str(obj: str) -> str:
+        return obj
+
+    def to_bytes(obj: str) -> bytes:
         if ":" in obj:
             enc, s = obj.split(":")
             return s.encode(enc)
         return base64.b85decode(obj)
-    elif T is type(None):
-        if obj:
-            raise ValueError(f"expected empty string, got {obj!r}")
-        return None
-    elif T is _mapping.UnionValue:
-        pos = _find_exposed(obj, "[")
-        if pos == -1:
-            return obj, ""
-        return _mapping.UnionValue(_expose(obj[:pos]), _expose(obj[pos:]))
-    elif T is _mapping.OptionalValue:
-        return _mapping.OptionalValue(
-            None if obj == "-" else obj[1:] if _DASH.fullmatch(obj) else obj
-        )
-    elif T is dict:
+
+    def to_date(obj: str) -> datetime.date:
+        return datetime.date.fromisoformat(obj)
+
+    def to_time(obj: str) -> datetime.time:
+        return datetime.time.fromisoformat(obj)
+
+    def to_datetime(obj: str) -> datetime.datetime:
+        return datetime.datetime.fromisoformat(obj)
+
+    def to_list(obj: str) -> list[str]:
+        return [_expose(item) for item in _split_exposed(obj, ",")]
+
+    def to_dict(obj: str) -> dict[str, str]:
         d = {}
         for si in _split_exposed(obj, ","):
             pos = _find_exposed(si, "=")
@@ -149,10 +168,15 @@ def _surject(obj, T):
                 raise ValueError(f"dictionary item {si!r} does not contain an '=' sign")
             d[_expose(si[:pos])] = _expose(si[pos + 1 :])
         return d
-    elif T is list:
-        return [_expose(item) for item in _split_exposed(obj, ",")]
-    else:
-        raise TypeError(f"unsupported type: {T.__name__}")
+
+    def to_optional(obj: str) -> str | None:
+        return None if obj == "-" else obj[1:] if _DASH.fullmatch(obj) else obj
+
+    def to_union(obj: str) -> tuple[str, str]:
+        pos = _find_exposed(obj, "[")
+        if pos == -1:
+            return obj, ""
+        return _expose(obj[:pos]), _expose(obj[pos:])
 
 
 def dump(f, obj, T):

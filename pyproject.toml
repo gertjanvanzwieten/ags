@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 
 [project.optional-dependencies]
-yaml = ["pyyaml>=6"]
+yaml = ["py-yaml12>=0.1.0"]
 
 [tool.setuptools.dynamic]
 version = {attr = "ags.__version__"}
